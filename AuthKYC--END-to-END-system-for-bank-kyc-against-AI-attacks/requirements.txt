@@ -1,0 +1,15 @@
+torch
+torchvision
+opencv-python-headless
+facenet-pytorch
+fastapi
+uvicorn[standard]
+python-multipart
+pydantic
+scipy
+mediapipe
+timm
+scikit-learn
+numpy
+tqdm
+tensorboard
