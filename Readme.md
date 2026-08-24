@@ -268,3 +268,145 @@ train_server.bat
 
 > [!TIP]
 > **If Kaggle is slow or the datasets aren't available as full videos**, you can download them manually through your browser from Kaggle or the official FF++ page, then unzip and place the `.mp4` files into the folder structure shown in Step 8. Run `python download_datasets.py --verify` to confirm everything is in place.
+
+
+# AuthKYC — Windows Server Commands (PowerShell)
+
+> [!IMPORTANT]
+> Your server uses **PowerShell**, not CMD. The syntax for environment variables is different:
+> - ❌ `export VAR=value` (that's Linux)
+> - ❌ `set VAR=value` (that's CMD)
+> - ✅ `$env:VAR = "value"` (that's PowerShell)
+
+---
+
+## Step 1: Navigate to project
+
+```powershell
+cd C:\Users\NITP\Downloads\AuthKYC-Completed_Track-main\AuthKYC-Completed_Track-main\AuthKYC--END-to-END-system-for-bank-kyc-against-AI-attacks
+```
+
+---
+
+## Step 2: Activate venv & install
+
+```powershell
+# If venv already exists:
+.\venv\Scripts\Activate
+
+# Check CUDA version:
+nvidia-smi
+
+# Install PyTorch (pick ONE matching your CUDA):
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+# Or for CUDA 11.8:
+# pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+
+# Install everything else:
+pip install -r requirements.txt
+pip install kaggle
+```
+
+---
+
+## Step 3: Verify GPU
+
+```powershell
+python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}'); print(f'GPU: {torch.cuda.get_device_name(0)}'); print(f'VRAM: {torch.cuda.get_device_properties(0).total_mem / 1024**3:.1f} GB')"
+```
+
+---
+
+## Step 4: Setup Kaggle & download datasets
+
+```powershell
+# Setup credentials (enter username and key when prompted):
+python download_datasets.py --setup --username Manmohan732 --key YOUR_API_KEY
+
+# Search for available datasets:
+python download_datasets.py --search
+
+# Download (edit slugs in download_datasets.py first if needed):
+python download_datasets.py --download --data-root D:\datasets
+
+# Organize into expected structure:
+python download_datasets.py --organize --data-root D:\datasets
+
+# Verify:
+python download_datasets.py --verify --data-root D:\datasets
+```
+
+---
+
+## Step 5: Set environment variables (PowerShell syntax!)
+
+```powershell
+$env:AUTHKYC_DATA_ROOT = "D:\datasets"
+$env:AUTHKYC_OUTPUT_ROOT = ".\training_output"
+$env:PYTHONPATH = "$PWD;$PWD\data;$PWD\finetune"
+```
+
+---
+
+## Step 6: Run dry run test
+
+```powershell
+python dry_run_test.py
+```
+
+---
+
+## Step 7: Run training
+
+```powershell
+# Option A: Run scripts directly (PowerShell-friendly)
+python data\extractor.py
+python data\train.py
+
+# Option B: Use the batch script (works in PowerShell too)
+.\train_server.bat
+
+# Option C: Phase by phase
+.\train_server.bat --phase2-only
+.\train_server.bat --skip-extraction
+.\train_server.bat --phase3-only
+```
+
+---
+
+## Step 8: Monitor
+
+```powershell
+# Check training progress:
+Get-Content training_output\logs\phase2_training_log.csv
+
+# Check summary after completion:
+Get-Content training_output\logs\phase2_summary.json
+```
+
+---
+
+## Quick Reference: PowerShell vs CMD vs Linux
+
+| Action | PowerShell | CMD | Linux/Mac |
+|--------|-----------|-----|-----------|
+| Set env var | `$env:VAR = "val"` | `set VAR=val` | `export VAR=val` |
+| Read env var | `$env:VAR` | `%VAR%` | `$VAR` |
+| Current dir | `$PWD` | `%cd%` | `$(pwd)` |
+| Activate venv | `.\venv\Scripts\Activate` | `venv\Scripts\activate` | `source venv/bin/activate` |
+| Run batch file | `.\script.bat` | `script.bat` | `./script.sh` |
+| View file | `Get-Content file` | `type file` | `cat file` |
+
+---
+
+## Troubleshooting
+
+| Problem | Fix |
+|---------|-----|
+| `export: not recognized` | You're in PowerShell. Use `$env:VAR = "value"` |
+| `set VAR=value` silently fails | In PowerShell `set` is an alias. Use `$env:VAR = "value"` |
+| `No module named kaggle.__main__` | Fixed — script now uses Python API directly |
+| `CUDA: False` | Reinstall PyTorch with correct CUDA version |
+| `RuntimeError: CUDA out of memory` | Set `BATCH_SIZE = 4` in `server_config.py` |
+| `BrokenPipeError` with DataLoader | Set `NUM_WORKERS = 0` in `server_config.py` |
+| Import errors | Set `$env:PYTHONPATH = "$PWD;$PWD\data;$PWD\finetune"` |

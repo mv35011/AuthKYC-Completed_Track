@@ -1,0 +1,8 @@
+# Lambda container dependencies — NO PyTorch
+# Total size: ~250MB (vs ~1.6GB with PyTorch)
+onnxruntime>=1.18.0
+opencv-python-headless>=4.8.0
+mediapipe>=0.10.0
+numpy>=1.24.0
+scipy>=1.10.0
+boto3>=1.28.0

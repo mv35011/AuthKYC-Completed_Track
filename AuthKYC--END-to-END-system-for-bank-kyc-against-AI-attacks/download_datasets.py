@@ -61,6 +61,11 @@ def setup_kaggle_credentials(username, api_key):
     """Configure Kaggle API credentials on Windows."""
     print("\n[1] Setting up Kaggle API credentials...")
 
+    if not username or not api_key:
+        print("    ✗ Username and API key cannot be empty!")
+        print("    Get your key at: https://www.kaggle.com/settings → API → Create New Token")
+        return
+
     # Kaggle expects credentials at %USERPROFILE%\.kaggle\kaggle.json
     kaggle_dir = os.path.join(os.path.expanduser("~"), ".kaggle")
     os.makedirs(kaggle_dir, exist_ok=True)
@@ -75,7 +80,6 @@ def setup_kaggle_credentials(username, api_key):
     with open(kaggle_json, 'w') as f:
         json.dump(credentials, f, indent=2)
 
-    # On Windows, we can't chmod but kaggle CLI handles it
     print(f"    ✓ Credentials saved to: {kaggle_json}")
     print(f"    Username: {username}")
     print(f"    Key: {'*' * (len(api_key) - 4) + api_key[-4:]}")
@@ -89,23 +93,31 @@ def setup_kaggle_credentials(username, api_key):
         subprocess.check_call([sys.executable, "-m", "pip", "install", "kaggle"])
         print("    ✓ Kaggle installed")
 
-    # Test authentication
+    # Test authentication using the Python API (not CLI)
     try:
-        result = subprocess.run(
-            [sys.executable, "-m", "kaggle", "datasets", "list", "-s", "deepfake", "--max-size", "1"],
-            capture_output=True, text=True, timeout=30
-        )
-        if result.returncode == 0:
-            print("    ✓ Kaggle authentication successful!")
-        else:
-            print(f"    ⚠ Kaggle auth test returned: {result.stderr.strip()}")
+        from kaggle.api.kaggle_api_extended import KaggleApi
+        api = KaggleApi()
+        api.authenticate()
+        # Quick test: list 1 dataset
+        results = api.dataset_list(search="deepfake", page_size=1)
+        print(f"    ✓ Kaggle authentication successful! (found {len(results)} test result)")
     except Exception as e:
-        print(f"    ⚠ Could not verify auth: {e}")
+        print(f"    ⚠ Auth test issue: {e}")
+        print(f"    Credentials are saved — downloads may still work.")
 
 
 def search_kaggle_datasets():
-    """Search Kaggle for available deepfake datasets."""
+    """Search Kaggle for available deepfake datasets using Python API."""
     print("\n[Search] Looking for deepfake datasets on Kaggle...")
+
+    try:
+        from kaggle.api.kaggle_api_extended import KaggleApi
+        api = KaggleApi()
+        api.authenticate()
+    except Exception as e:
+        print(f"  ✗ Kaggle auth failed: {e}")
+        print(f"  Run: python download_datasets.py --setup")
+        return
 
     searches = [
         ("FaceForensics++ C23", "faceforensics c23"),
@@ -116,45 +128,39 @@ def search_kaggle_datasets():
     for name, query in searches:
         print(f"\n  --- {name} ---")
         try:
-            result = subprocess.run(
-                [sys.executable, "-m", "kaggle", "datasets", "list",
-                 "-s", query, "--sort-by", "downloadCount", "--max-size", "100"],
-                capture_output=True, text=True, timeout=30
-            )
-            if result.returncode == 0 and result.stdout.strip():
-                # Print first 5 results
-                lines = result.stdout.strip().split('\n')
-                for line in lines[:6]:
-                    print(f"    {line}")
+            results = api.dataset_list(search=query, sort_by="downloadCount", page_size=5)
+            if results:
+                print(f"  {'Slug':<50} {'Size':<12} {'Downloads':<10}")
+                print(f"  {'─' * 50} {'─' * 12} {'─' * 10}")
+                for ds in results:
+                    slug = str(ds)
+                    size = getattr(ds, 'totalBytes', 0) or 0
+                    size_str = f"{size / 1024 / 1024 / 1024:.1f} GB" if size > 0 else "unknown"
+                    downloads = getattr(ds, 'downloadCount', '?')
+                    print(f"  {slug:<50} {size_str:<12} {downloads:<10}")
             else:
-                print(f"    No results or error: {result.stderr.strip()}")
+                print(f"  No results found")
         except Exception as e:
-            print(f"    Error: {e}")
+            print(f"  Error: {e}")
 
 
 def download_dataset(slug, output_dir):
-    """Download a dataset from Kaggle."""
+    """Download a dataset from Kaggle using Python API."""
     print(f"\n  Downloading: {slug}")
     print(f"  To: {output_dir}")
     os.makedirs(output_dir, exist_ok=True)
 
     try:
-        result = subprocess.run(
-            [sys.executable, "-m", "kaggle", "datasets", "download",
-             "-d", slug, "-p", output_dir, "--unzip"],
-            capture_output=False, timeout=7200  # 2 hour timeout for large datasets
-        )
-        if result.returncode == 0:
-            print(f"    ✓ Downloaded and extracted: {slug}")
-            return True
-        else:
-            print(f"    ✗ Download failed with code {result.returncode}")
-            return False
-    except subprocess.TimeoutExpired:
-        print(f"    ✗ Download timed out (>2 hours)")
-        return False
-    except FileNotFoundError:
-        print("    ✗ Kaggle CLI not found. Run: pip install kaggle")
+        from kaggle.api.kaggle_api_extended import KaggleApi
+        api = KaggleApi()
+        api.authenticate()
+
+        print(f"  Downloading (this may take a while for large datasets)...")
+        api.dataset_download_files(slug, path=output_dir, unzip=True, quiet=False)
+        print(f"    ✓ Downloaded and extracted: {slug}")
+        return True
+    except Exception as e:
+        print(f"    ✗ Download failed: {e}")
         return False
 
 
