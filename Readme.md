@@ -1,131 +1,198 @@
-Commands for Windows execution
+# AuthKYC — Complete Windows Server Setup (Start to Finish)
 
-# AuthKYC — Windows Server Commands
+## The Full Sequence (Copy-Paste Ready)
 
-## What was fixed for Windows
-- `server_config.py` auto-detects Windows and sets `NUM_WORKERS=2` (avoids multiprocessing spawn crashes)
-- All DataLoaders now use `persistent_workers=True` (prevents worker respawn overhead)
-- Default dataset path adapts to `D:\datasets` on Windows
-- Created `train_server.bat` — full equivalent of the bash script
-- `dry_run_test.py` uses `num_workers=0` on Windows for maximum safety
-
----
-
-## Step-by-Step Commands
-
-### 1. Open Command Prompt (Admin recommended)
+### Step 1: Navigate to project
 
 ```cmd
 cd C:\path\to\AuthKYC--END-to-END-system-for-bank-kyc-against-AI-attacks
 ```
 
-### 2. Create & activate a virtual environment
+---
+
+### Step 2: Create virtual environment & install everything
 
 ```cmd
 python -m venv venv
 venv\Scripts\activate
-```
 
-### 3. Install PyTorch with CUDA (pick your CUDA version)
-
-Check your CUDA version first:
-```cmd
+REM Check your CUDA version first:
 nvidia-smi
-```
 
-Then install the matching PyTorch:
-```cmd
-REM For CUDA 12.1 (most common on recent drivers):
+REM Install PyTorch (pick ONE matching your CUDA version from nvidia-smi):
 pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+REM Or for CUDA 11.8:
+REM pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
 
-REM For CUDA 11.8:
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
-```
-
-### 4. Install remaining dependencies
-
-```cmd
+REM Install everything else:
 pip install -r requirements.txt
+pip install kaggle
 ```
 
-### 5. Verify GPU is visible
+---
+
+### Step 3: Verify GPU
 
 ```cmd
 python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}'); print(f'GPU: {torch.cuda.get_device_name(0)}'); print(f'VRAM: {torch.cuda.get_device_properties(0).total_mem / 1024**3:.1f} GB')"
 ```
 
-> [!IMPORTANT]
-> You should see `CUDA: True` and your A2000. If you see `CUDA: False`, your PyTorch CUDA version doesn't match your driver — recheck `nvidia-smi` output and install the correct PyTorch build.
+> [!CAUTION]
+> If this shows `CUDA: False`, stop here. Reinstall PyTorch with the correct CUDA version.
 
-### 6. Configure dataset paths
+---
 
-Edit `server_config.py` directly — change line ~20:
-```python
-DATASET_ROOT = r"D:\path\to\your\datasets"
+### Step 4: Setup Kaggle credentials
+
+Go to https://www.kaggle.com/settings → scroll to **API** section → click **"Create New Token"**. This downloads a `kaggle.json` file. Open it — you'll see your username and key.
+
+```cmd
+python download_datasets.py --setup --username YOUR_KAGGLE_USERNAME --key YOUR_KAGGLE_API_KEY
 ```
 
-Or set environment variables:
+Or interactively (it will prompt you):
 ```cmd
-set AUTHKYC_DATA_ROOT=D:\path\to\your\datasets
-set AUTHKYC_OUTPUT_ROOT=.\training_output
+python download_datasets.py --setup
+```
+
+---
+
+### Step 5: Search for available datasets
+
+```cmd
+python download_datasets.py --search
+```
+
+This searches Kaggle for FaceForensics++ and Celeb-DF datasets and shows you what's available. Note down the **slugs** (format: `username/dataset-name`) of the ones you want.
+
+---
+
+### Step 6: Edit dataset slugs (if needed)
+
+Open `download_datasets.py` in a text editor and update the `KAGGLE_DATASETS` dictionary (around line 42) with the exact slugs you found:
+
+```python
+KAGGLE_DATASETS = {
+    "ff_c23": {
+        "slug": "the-actual-slug-you-found",  # ← CHANGE THIS
+        ...
+    },
+    "celeb_df": {
+        "slug": "the-actual-slug-you-found",  # ← CHANGE THIS
+        ...
+    },
+}
+```
+
+Or download a specific dataset directly by slug:
+```cmd
+python download_datasets.py --download-slug username/dataset-name --data-root D:\datasets
+```
+
+---
+
+### Step 7: Download datasets
+
+```cmd
+REM Set where you want datasets stored:
+set AUTHKYC_DATA_ROOT=D:\datasets
+
+REM Download all configured datasets:
+python download_datasets.py --download --data-root D:\datasets
+
+REM Or download specific ones:
+python download_datasets.py --download-slug sorokin/faceforensics --data-root D:\datasets
+python download_datasets.py --download-slug reubensuju/celeb-df-v2 --data-root D:\datasets
 ```
 
 > [!NOTE]
-> The dataset directory should contain:
-> ```
-> D:\datasets\
-> ├── FaceForensics++_C23\
-> │   ├── original\          (*.mp4 real videos)
-> │   ├── Deepfakes\         (*.mp4)
-> │   ├── Face2Face\         (*.mp4)
-> │   ├── FaceSwap\          (*.mp4)
-> │   ├── FaceShifter\       (*.mp4)
-> │   └── DeepFakeDetection\ (*.mp4)
-> └── celeb-df-v2\
->     ├── Celeb-real\        (*.mp4)
->     └── YouTube-real\      (*.mp4)
-> ```
+> Downloads can be 15-50 GB. On a decent connection this takes 30-90 minutes. Keep the terminal open.
 
-### 7. Set PYTHONPATH
+---
+
+### Step 8: Organize into expected structure
+
+```cmd
+python download_datasets.py --organize --data-root D:\datasets
+```
+
+This auto-maps downloaded folders to the structure the code expects. If auto-mapping fails, manually move files:
+
+```
+D:\datasets\
+├── FaceForensics++_C23\
+│   ├── original\           ← Real videos (*.mp4)
+│   ├── Deepfakes\          ← Deepfake manipulations
+│   ├── Face2Face\          ← Face2Face manipulations
+│   ├── FaceSwap\           ← FaceSwap manipulations
+│   ├── FaceShifter\        ← FaceShifter manipulations
+│   └── DeepFakeDetection\  ← DeepFakeDetection manipulations
+└── celeb-df-v2\
+    ├── Celeb-real\         ← Celeb-DF real videos
+    └── YouTube-real\       ← YouTube real videos
+```
+
+---
+
+### Step 9: Verify everything is in place
+
+```cmd
+python download_datasets.py --verify --data-root D:\datasets
+```
+
+You should see `✅ Dataset structure is ready for training!` with video counts for each folder.
+
+---
+
+### Step 10: Configure server_config.py
+
+Open `server_config.py` and update the dataset root (line ~20):
+
+```python
+_DEFAULT_DATA = r"D:\datasets"  # ← Your actual path
+```
+
+Or just keep using the environment variable:
+```cmd
+set AUTHKYC_DATA_ROOT=D:\datasets
+```
+
+---
+
+### Step 11: Set PYTHONPATH
 
 ```cmd
 set PYTHONPATH=%cd%;%cd%\data;%cd%\finetune;%PYTHONPATH%
 ```
 
-### 8. Run the dry run test first
+---
+
+### Step 12: Run dry run test
 
 ```cmd
 python dry_run_test.py
 ```
 
-This takes ~5 minutes, generates synthetic data, and verifies:
-- All imports work
-- Pretrained R3D-18 downloads and loads
-- Forward pass runs on GPU
-- Training loop with all fixes (grad clipping, label smoothing, etc.)
-- Checkpoint save and reload
-- VRAM usage stays within 16GB
+Wait for `✅ All tests passed`. If any test fails, fix the issue before proceeding.
 
-> [!CAUTION]
-> **Do NOT proceed to real training until the dry run shows `✅ All tests passed`.**
+---
 
-### 9. Run the full training pipeline
+### Step 13: Run training!
 
-**Option A: Using the batch script** (recommended)
+**Option A: Full pipeline (recommended)**
 ```cmd
 train_server.bat
 ```
 
-**Option B: Step by step** (if you want to run phases individually)
-
+**Option B: Step by step**
 ```cmd
-REM Phase 1: Extract face tensors from videos (~2-4 hours)
+REM Phase 1: Extract face tensors from videos
 python data\extractor.py
 
-REM Phase 2: Full FTCA training (~6-12 hours depending on data size)
+REM Phase 2: Full FTCA training (the big one)
 python data\train.py
 
-REM Phase 3: Fine-tuning (optional, ~2-4 hours)
+REM Phase 3: Fine-tuning (optional, after Phase 2)
 python finetune\data_extractor.py
 python finetune\train.py
 
@@ -133,53 +200,54 @@ REM Evaluate
 python data\eval_ftca.py
 ```
 
-**Option C: Skip extraction** (if tensors already exist)
-```cmd
-train_server.bat --skip-extraction
-```
-
-**Option D: Only Phase 2** (most important — get the baseline right first)
+**Option C: Only what you need**
 ```cmd
 train_server.bat --phase2-only
+train_server.bat --skip-extraction
+train_server.bat --phase3-only
 ```
 
-### 10. Monitor training
+---
 
-Training logs are written to CSV files you can open in Excel:
+### Step 14: Monitor training
+
 ```cmd
-REM Check Phase 2 progress:
+REM View Phase 2 log (open in Excel for charts):
 type training_output\logs\phase2_training_log.csv
 
-REM Check Phase 3 progress:
-type training_output\logs\phase3_training_log.csv
-```
-
-Or check the JSON summaries after completion:
-```cmd
+REM View final summary:
 type training_output\logs\phase2_summary.json
-type training_output\logs\phase3_summary.json
 ```
 
-### 11. Find your trained weights
+---
 
-After training completes:
-```
-training_output\
-├── checkpoints\
-│   ├── best_ftca_phase2.pth      ← Phase 2 best (full checkpoint)
-│   ├── best_ftca_pad_model.pth   ← Phase 2 weights (for core_engine.py)
-│   ├── best_ftca_phase3.pth      ← Phase 3 best (full checkpoint)
-│   └── patent_ftca_v2.pth        ← Phase 3 weights (for core_engine.py)
-└── logs\
-    ├── phase2_training_log.csv
-    ├── phase2_summary.json
-    ├── phase3_training_log.csv
-    └── phase3_summary.json
-```
+### Step 15: Copy trained weights for deployment
 
-To use the trained weights with the demo/API, copy them to the project root:
 ```cmd
 copy training_output\checkpoints\best_ftca_pad_model.pth .
+```
+
+---
+
+## Complete One-Shot Command Block
+
+If you want to copy-paste everything at once (after editing paths):
+
+```cmd
+cd C:\path\to\AuthKYC--END-to-END-system-for-bank-kyc-against-AI-attacks
+python -m venv venv
+venv\Scripts\activate
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+pip install -r requirements.txt
+pip install kaggle
+python download_datasets.py --setup --username YOUR_USER --key YOUR_KEY
+set AUTHKYC_DATA_ROOT=D:\datasets
+python download_datasets.py --download --data-root D:\datasets
+python download_datasets.py --organize --data-root D:\datasets
+python download_datasets.py --verify --data-root D:\datasets
+set PYTHONPATH=%cd%;%cd%\data;%cd%\finetune
+python dry_run_test.py
+train_server.bat
 ```
 
 ---
@@ -188,9 +256,15 @@ copy training_output\checkpoints\best_ftca_pad_model.pth .
 
 | Problem | Fix |
 |---------|-----|
-| `CUDA: False` | Reinstall PyTorch with correct CUDA version matching `nvidia-smi` |
-| `RuntimeError: CUDA out of memory` | Reduce `BATCH_SIZE` in `server_config.py` from 8 to 4 |
+| `CUDA: False` | Reinstall PyTorch with correct CUDA version from `nvidia-smi` |
+| `RuntimeError: CUDA out of memory` | Set `BATCH_SIZE = 4` in `server_config.py` |
 | `BrokenPipeError` with DataLoader | Set `NUM_WORKERS = 0` in `server_config.py` |
-| `OSError: [WinError 1455]` (page file) | Close other apps, or increase Windows virtual memory |
-| Import errors | Make sure `set PYTHONPATH=%cd%;%cd%\data;%cd%\finetune` is set |
-| Training loss stays flat at ~0.69 | This is normal for 1-2 epochs — if it persists past epoch 5, there's a data loading issue |
+| `kaggle: 403 Forbidden` | Re-run `--setup` with correct credentials, or accept dataset rules on kaggle.com first |
+| `kaggle: 404 Not Found` | The dataset slug is wrong — run `--search` to find correct slug |
+| Kaggle download is very slow | Download on a browser instead, then place files manually per Step 8 |
+| Import errors | Make sure `set PYTHONPATH=%cd%;%cd%\data;%cd%\finetune` is run |
+| `OSError: [WinError 1455]` | Increase Windows virtual memory or close other apps |
+| Training loss stuck at ~0.69 | Normal for 1-2 epochs. If past epoch 5, check data loading |
+
+> [!TIP]
+> **If Kaggle is slow or the datasets aren't available as full videos**, you can download them manually through your browser from Kaggle or the official FF++ page, then unzip and place the `.mp4` files into the folder structure shown in Step 8. Run `python download_datasets.py --verify` to confirm everything is in place.
