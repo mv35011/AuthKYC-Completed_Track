@@ -70,7 +70,8 @@ def evaluate_best_model():
     val_dataset = DeepfakeVideoDataset(data_dir=val_dir, is_training=False)
     val_loader = DataLoader(
         val_dataset, batch_size=CFG.BATCH_SIZE, shuffle=False,
-        num_workers=CFG.NUM_WORKERS, pin_memory=CFG.PIN_MEMORY
+        num_workers=CFG.NUM_WORKERS, pin_memory=CFG.PIN_MEMORY,
+        persistent_workers=CFG.PERSISTENT_WORKERS and CFG.NUM_WORKERS > 0
     )
 
     print(f"  Val samples: {len(val_dataset)}")

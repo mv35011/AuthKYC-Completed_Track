@@ -154,10 +154,15 @@ def test_training_loop(num_epochs=3):
     print(f"    Train: {len(train_dataset)} samples")
     print(f"    Val:   {len(val_dataset)} samples")
 
+    # Use fewer workers on Windows to avoid spawn overhead issues
+    nw = 0 if sys.platform == 'win32' else 2
+
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True,
-                              num_workers=2, pin_memory=True, drop_last=True)
+                              num_workers=nw, pin_memory=True, drop_last=True,
+                              persistent_workers=(nw > 0))
     val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False,
-                            num_workers=2, pin_memory=True)
+                            num_workers=nw, pin_memory=True,
+                            persistent_workers=(nw > 0))
 
     # Training setup
     criterion = nn.BCEWithLogitsLoss()

@@ -113,11 +113,13 @@ def train_model():
     train_loader = DataLoader(
         train_dataset, batch_size=CFG.BATCH_SIZE, shuffle=True,
         num_workers=CFG.NUM_WORKERS, pin_memory=CFG.PIN_MEMORY,
-        drop_last=True
+        drop_last=True,
+        persistent_workers=CFG.PERSISTENT_WORKERS and CFG.NUM_WORKERS > 0
     )
     val_loader = DataLoader(
         val_dataset, batch_size=CFG.BATCH_SIZE, shuffle=False,
-        num_workers=min(2, CFG.NUM_WORKERS), pin_memory=CFG.PIN_MEMORY
+        num_workers=min(2, CFG.NUM_WORKERS), pin_memory=CFG.PIN_MEMORY,
+        persistent_workers=CFG.PERSISTENT_WORKERS and min(2, CFG.NUM_WORKERS) > 0
     )
 
     # Loss, Optimizer, Scheduler

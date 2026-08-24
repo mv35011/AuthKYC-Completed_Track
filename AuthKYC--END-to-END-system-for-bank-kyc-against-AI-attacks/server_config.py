@@ -9,6 +9,7 @@ Usage:
     print(CFG.BATCH_SIZE)
 """
 import os
+import sys
 import torch
 
 
@@ -17,7 +18,9 @@ class _Config:
 
     # ─── Dataset Paths (EDIT THESE ON THE SERVER) ───
     # Root directory where FF++ and Celeb-DF datasets live
-    DATASET_ROOT = os.environ.get("AUTHKYC_DATA_ROOT", "/workspace/datasets")
+    # Default path adapts to OS — override via env var or edit directly
+    _DEFAULT_DATA = r"D:\datasets" if sys.platform == 'win32' else "/workspace/datasets"
+    DATASET_ROOT = os.environ.get("AUTHKYC_DATA_ROOT", _DEFAULT_DATA)
 
     # FaceForensics++ C23
     FF_ORIGINAL = os.path.join(DATASET_ROOT, "FaceForensics++_C23/original")
@@ -55,8 +58,11 @@ class _Config:
 
     # ─── Hardware (A2000 16GB) ───
     BATCH_SIZE = 8            # Safe for A2000 16GB with 3D CNN + AMP
-    NUM_WORKERS = 4           # Enough to keep GPU fed without starving
+    # Windows uses 'spawn' for multiprocessing which is slow/buggy with DataLoader
+    # workers > 0. Set to 2 on Windows, 4 on Linux.
+    NUM_WORKERS = 2 if sys.platform == 'win32' else 4
     PIN_MEMORY = True
+    PERSISTENT_WORKERS = True  # Keeps worker processes alive between batches (helps on Windows)
 
     @property
     def DEVICE(self):

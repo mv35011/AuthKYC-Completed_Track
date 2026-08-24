@@ -94,11 +94,13 @@ def train_model():
     train_loader = DataLoader(
         train_dataset, batch_size=CFG.BATCH_SIZE, shuffle=True,
         num_workers=CFG.NUM_WORKERS, pin_memory=CFG.PIN_MEMORY,
-        drop_last=True  # Avoid tiny last batch with batch norm
+        drop_last=True,  # Avoid tiny last batch with batch norm
+        persistent_workers=CFG.PERSISTENT_WORKERS and CFG.NUM_WORKERS > 0
     )
     val_loader = DataLoader(
         val_dataset, batch_size=CFG.BATCH_SIZE, shuffle=False,
-        num_workers=CFG.NUM_WORKERS, pin_memory=CFG.PIN_MEMORY
+        num_workers=CFG.NUM_WORKERS, pin_memory=CFG.PIN_MEMORY,
+        persistent_workers=CFG.PERSISTENT_WORKERS and CFG.NUM_WORKERS > 0
     )
 
     # Loss, Optimizer, Scheduler
