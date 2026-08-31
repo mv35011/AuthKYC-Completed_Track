@@ -40,17 +40,16 @@ from server_config import CFG
 # FF++ download script or manual upload), set --source=videos
 
 KAGGLE_DATASETS = {
-    # FaceForensics++ C23 — pre-extracted face crops
-    # These are commonly available on Kaggle. Replace slugs with whatever you find.
+    # FaceForensics++ C23 — confirmed working Kaggle datasets
     "ff_c23": {
-        "slug": "sorokin/faceforensics",  # EDIT THIS with your chosen dataset
-        "description": "FaceForensics++ C23 manipulated videos/frames",
-        "size_gb": "~15-50 GB depending on version",
+        "slug": "thedevastator/faceforensics-c23-dataset",
+        "description": "FaceForensics++ C23 extracted frames",
+        "size_gb": "~15-30 GB",
     },
 
-    # Celeb-DF v2
+    # Celeb-DF v2 — confirmed working
     "celeb_df": {
-        "slug": "reubensuju/celeb-df-v2",  # EDIT THIS with your chosen dataset
+        "slug": "xhlulu/celeb-df-v2",
         "description": "Celeb-DF v2 real and deepfake videos",
         "size_gb": "~5-10 GB",
     },
@@ -99,7 +98,7 @@ def setup_kaggle_credentials(username, api_key):
         api = KaggleApi()
         api.authenticate()
         # Quick test: list 1 dataset
-        results = api.dataset_list(search="deepfake", page_size=1)
+        results = api.dataset_list(search="deepfake")
         print(f"    ✓ Kaggle authentication successful! (found {len(results)} test result)")
     except Exception as e:
         print(f"    ⚠ Auth test issue: {e}")
@@ -128,7 +127,7 @@ def search_kaggle_datasets():
     for name, query in searches:
         print(f"\n  --- {name} ---")
         try:
-            results = api.dataset_list(search=query, sort_by="downloadCount", page_size=5)
+            results = api.dataset_list(search=query)
             if results:
                 print(f"  {'Slug':<50} {'Size':<12} {'Downloads':<10}")
                 print(f"  {'─' * 50} {'─' * 12} {'─' * 10}")
