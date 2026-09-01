@@ -56,13 +56,19 @@ class _Config:
     TRAIN_SPLIT = 0.8         # 80/20 split
     RANDOM_SEED = 42
 
-    # ─── Hardware (A2000 16GB) ───
-    BATCH_SIZE = 8            # Safe for A2000 16GB with 3D CNN + AMP
+    # ─── Hardware (auto-detect VRAM) ───
+    # Auto-set batch size based on GPU VRAM
+    if torch.cuda.is_available():
+        _VRAM_GB = torch.cuda.get_device_properties(0).total_mem / (1024**3)
+        BATCH_SIZE = 16 if _VRAM_GB >= 20 else 8  # 16 for 24GB+ GPUs, 8 for 16GB
+    else:
+        BATCH_SIZE = 4
+        _VRAM_GB = 0
     # Windows uses 'spawn' for multiprocessing which is slow/buggy with DataLoader
     # workers > 0. Set to 2 on Windows, 4 on Linux.
     NUM_WORKERS = 2 if sys.platform == 'win32' else 4
     PIN_MEMORY = True
-    PERSISTENT_WORKERS = True  # Keeps worker processes alive between batches (helps on Windows)
+    PERSISTENT_WORKERS = True
 
     @property
     def DEVICE(self):
