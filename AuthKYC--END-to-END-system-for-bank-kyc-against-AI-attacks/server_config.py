@@ -59,7 +59,7 @@ class _Config:
     # ─── Hardware (auto-detect VRAM) ───
     # Auto-set batch size based on GPU VRAM
     if torch.cuda.is_available():
-        _VRAM_GB = torch.cuda.get_device_properties(0).total_mem / (1024**3)
+        _VRAM_GB = torch.cuda.get_device_properties(0).total_memory / (1024**3)
         BATCH_SIZE = 16 if _VRAM_GB >= 20 else 8  # 16 for 24GB+ GPUs, 8 for 16GB
     else:
         BATCH_SIZE = 4

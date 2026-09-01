@@ -36,7 +36,7 @@ echo   AuthKYC Training Pipeline (Windows)
 echo   %date% %time%
 echo ═══════════════════════════════════════════════════════
 
-python -c "import torch; print(f'  PyTorch:  {torch.__version__}'); print(f'  CUDA:     {torch.cuda.is_available()}'); gpu=torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'None'; print(f'  GPU:      {gpu}'); vram=torch.cuda.get_device_properties(0).total_mem/1024**3 if torch.cuda.is_available() else 0; print(f'  VRAM:     {vram:.1f} GB')"
+python -c "import torch; print(f'  PyTorch:  {torch.__version__}'); print(f'  CUDA:     {torch.cuda.is_available()}'); gpu=torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'None'; print(f'  GPU:      {gpu}'); vram=torch.cuda.get_device_properties(0).total_memory/1024**3 if torch.cuda.is_available() else 0; print(f'  VRAM:     {vram:.1f} GB')"
 if errorlevel 1 (
     echo [ERROR] Python or PyTorch not found!
     exit /b 1
