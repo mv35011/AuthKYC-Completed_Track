@@ -1,0 +1,14 @@
+{
+  "phase": 2,
+  "best_val_loss": 0.2194205613148862,
+  "best_val_acc": 0.9173989455184535,
+  "best_val_auc": 0.9734076827757125,
+  "total_epochs_run": 18,
+  "config": {
+    "batch_size": 8,
+    "lr": 0.0003,
+    "label_smoothing": 0.05,
+    "grad_clip": 1.0,
+    "pretrained_backbone": true
+  }
+}

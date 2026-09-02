@@ -54,35 +54,37 @@ def package_space():
                        ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
         print(f"  ✓ modules/ ({len(os.listdir(modules_dst))} files)")
 
-    # Copy ONNX model (if it exists)
+    # Copy PyTorch checkpoint (not ONNX — FFT ops don't export to ONNX)
     model_dir = os.path.join(BUILD_DIR, 'model')
     os.makedirs(model_dir, exist_ok=True)
 
-    onnx_candidates = [
-        os.path.join(PROJECT_ROOT, 'deploy', 'lambda', 'model', 'ftca_model.onnx'),
-        os.path.join(PROJECT_ROOT, 'model', 'ftca_model.onnx'),
-        os.path.join(PROJECT_ROOT, 'ftca_model.onnx'),
+    pth_candidates = [
+        os.path.join(PROJECT_ROOT, 'training_outputs', 'checkpoints', 'best_ftca_phase2.pth'),
+        os.path.join(PROJECT_ROOT, 'training_output', 'checkpoints', 'best_ftca_phase2.pth'),
+        os.path.join(PROJECT_ROOT, 'best_ftca_phase2.pth'),
+        os.path.join(PROJECT_ROOT, 'training_outputs', 'checkpoints', 'best_ftca_phase3.pth'),
+        os.path.join(PROJECT_ROOT, 'training_output', 'checkpoints', 'best_ftca_phase3.pth'),
     ]
 
-    onnx_found = False
-    for candidate in onnx_candidates:
+    pth_found = False
+    for candidate in pth_candidates:
         if os.path.exists(candidate):
-            shutil.copy2(candidate, os.path.join(model_dir, 'ftca_model.onnx'))
+            shutil.copy2(candidate, os.path.join(model_dir, 'best_ftca_phase2.pth'))
             size_mb = os.path.getsize(candidate) / (1024 * 1024)
-            print(f"  ✓ model/ftca_model.onnx ({size_mb:.1f} MB)")
-            onnx_found = True
+            print(f"  ✓ model/best_ftca_phase2.pth ({size_mb:.1f} MB)")
+            pth_found = True
             break
 
-    if not onnx_found:
-        print(f"  ⚠ ONNX model not found — run export first:")
-        print(f"    python deploy/export_onnx.py --checkpoint best_ftca_pad_model.pth")
+    if not pth_found:
+        print(f"  ⚠ No trained checkpoint found!")
+        print(f"    Place best_ftca_phase2.pth in training_outputs/checkpoints/")
         print(f"    The Space will work but FTCA stage will return 0.0")
 
-    # Create .gitattributes for LFS (ONNX model is large)
-    gitattributes = "*.onnx filter=lfs diff=lfs merge=lfs -text\n"
+    # Create .gitattributes for LFS (model checkpoint is large)
+    gitattributes = "*.pth filter=lfs diff=lfs merge=lfs -text\n"
     with open(os.path.join(BUILD_DIR, '.gitattributes'), 'w') as f:
         f.write(gitattributes)
-    print(f"  ✓ .gitattributes (LFS for .onnx files)")
+    print(f"  ✓ .gitattributes (LFS for .pth files)")
 
     print(f"\n  Build directory: {BUILD_DIR}")
     print(f"  Files: {len(os.listdir(BUILD_DIR))}")
