@@ -2,7 +2,7 @@
 
 > **Defending Bank KYC Video Verification Against AI-Powered Attacks**
 > 
-> Built for [Razorpay FTX Buildathon 2025](https://unstop.com/hackathons/razorpay-ftx-2025-razorpay-1464825) — AI Risk Manager Track
+> Built for [RazorpayBuildathon]([https://razorpay.com/buildathon/]) — AI Risk Manager Track
 
 ---
 
