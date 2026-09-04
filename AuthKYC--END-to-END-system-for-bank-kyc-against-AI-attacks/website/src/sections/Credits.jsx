@@ -49,7 +49,7 @@ const Credits = () => {
         </div>
 
         <div className="text-xs font-mono text-gray-600">
-          Built for Razorpay FTX Buildathon 2025
+          Built for Razorpay AI Buildathon — Track 02: AI Risk Manager
         </div>
       </motion.div>
     </section>

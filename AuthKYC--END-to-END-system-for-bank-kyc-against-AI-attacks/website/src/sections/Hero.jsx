@@ -12,7 +12,7 @@ const Hero = () => {
           transition={{ duration: 0.8 }}
           className="mb-8 px-4 py-2 border border-gray-800 text-gray-400 text-sm font-mono uppercase tracking-wide"
         >
-          Razorpay FTX Buildathon 2025 — AI Risk Manager Track
+          Razorpay AI Buildathon — Track 02: AI Risk Manager
         </motion.div>
 
         <motion.h1
