@@ -1,412 +1,225 @@
-# AuthKYC — Complete Windows Server Setup (Start to Finish)
+# AuthKYC — End-to-End Presentation Attack Detection for Bank KYC
 
-## The Full Sequence (Copy-Paste Ready)
+> **Defending Bank KYC Video Verification Against AI-Powered Attacks**
+> 
+> Built for [Razorpay FTX Buildathon 2025](https://unstop.com/hackathons/razorpay-ftx-2025-razorpay-1464825) — AI Risk Manager Track
 
-### Step 1: Navigate to project
+---
 
-```cmd
-cd C:\path\to\AuthKYC--END-to-END-system-for-bank-kyc-against-AI-attacks
+## Overview
+
+AuthKYC is a **4-stage defense-in-depth pipeline** that protects bank KYC video verification from virtual camera injection, screen replay attacks, AI-generated deepfakes, and non-biological sources.
+
+| Stage | Detection Method | Attack Caught |
+|-------|-----------------|---------------|
+| 1. **PRNU Sensor Forensics** | Camera sensor noise fingerprint analysis | Virtual cameras (OBS, ManyCam) |
+| 2. **Moiré FFT Analysis** | 2D Fast Fourier Transform frequency detection | Screen replay attacks |
+| 3. **rPPG Pulse Extraction** | Remote photoplethysmography (heart rate detection) | Photos, masks, non-living sources |
+| 4. **FTCA Deepfake Detection** | Frequency-Temporal Cross-Attention neural network | AI deepfakes (FaceSwap, Face2Face, etc.) |
+
+**Results:** 99.00% AUC on cross-dataset evaluation (FaceForensics++ → Celeb-DF v2)
+
+---
+
+## Live Demo
+
+| Platform | URL |
+|----------|-----|
+| **Presentation Website** (Vercel) | [authkyc.vercel.app](https://authkyc.vercel.app) |
+| **Live Inference** (HuggingFace) | [huggingface.co/spaces/mv350113/authkyc-demo](https://huggingface.co/spaces/mv350113/authkyc-demo) |
+
+---
+
+## Project Structure
+
+```
+AuthKYC/
+├── modules/                    # Core detection modules
+│   ├── ftca_module.py         # FTCA neural network (R3D-18 + CrossAttention)
+│   ├── prnu_forensics.py      # PRNU sensor fingerprint detector
+│   ├── replay_detection.py    # Moiré FFT replay detector
+│   ├── rppg_extractor.py      # Remote photoplethysmography
+│   └── dynamic_fallback.py    # Adaptive pipeline fallback
+├── data/                       # Data processing pipeline
+│   ├── extractor.py           # Video → face crop tensor extraction
+│   ├── dataset.py             # PyTorch dataset with augmentation
+│   └── train.py               # Training loop
+├── finetune/                   # Fine-tuning pipeline
+│   ├── train.py               # Phase 2/3 training script
+│   └── config.py              # Training hyperparameters
+├── deploy/                     # Deployment
+│   ├── hf_spaces/             # HuggingFace Spaces app
+│   │   ├── app.py             # Gradio demo with ZeroGPU
+│   │   ├── requirements.txt
+│   │   └── README.md          # HF Space metadata
+│   └── deploy_hf_spaces.py    # Build & push script
+├── website/                    # Presentation website (React + Tailwind)
+│   ├── src/sections/          # 8 presentation slides
+│   ├── public/videos/         # Demo video files
+│   └── package.json
+├── core_engine.py             # FastAPI backend
+├── main.py                    # CLI entry point
+├── server_config.py           # GPU/server auto-configuration
+├── report.md                  # Technical report
+└── README.md                  # This file
 ```
 
 ---
 
-### Step 2: Create virtual environment & install everything
+## Quick Start
 
-```cmd
-python -m venv venv
-venv\Scripts\activate
+### Prerequisites
 
-REM Check your CUDA version first:
-nvidia-smi
+- Python 3.10+
+- PyTorch 2.0+
+- Node.js 18+ (for website)
 
-REM Install PyTorch (pick ONE matching your CUDA version from nvidia-smi):
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
-REM Or for CUDA 11.8:
-REM pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
+### 1. Install Dependencies
 
-REM Install everything else:
-pip install -r requirements.txt
-pip install kaggle
+```bash
+# Clone the repo
+git clone https://github.com/mv35011/AuthKYC-Completed_Track.git
+cd AuthKYC-Completed_Track
+
+# Python dependencies
+pip install torch torchvision opencv-python mediapipe==0.10.14 numpy scipy
+
+# Website dependencies
+cd website && npm install && cd ..
+```
+
+### 2. Run the 4-Stage Pipeline (CLI)
+
+```bash
+# Analyze a single video
+python main.py --input path/to/video.mp4
+
+# Run with specific stages
+python main.py --input video.mp4 --stages prnu moire rppg ftca
+```
+
+### 3. Run the FastAPI Backend
+
+```bash
+python core_engine.py
+# API available at http://localhost:8000
+# Docs at http://localhost:8000/docs
+```
+
+### 4. Run the Presentation Website
+
+```bash
+cd website
+npm run dev
+# Open http://localhost:5173
+```
+
+### 5. Deploy to HuggingFace Spaces
+
+```bash
+# Package the build
+python deploy/deploy_hf_spaces.py --package
+
+# Push to HF Hub
+python deploy/deploy_hf_spaces.py --push --hf-username YOUR_USERNAME
 ```
 
 ---
 
-### Step 3: Verify GPU
+## Training
 
-```cmd
-python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}'); print(f'GPU: {torch.cuda.get_device_name(0)}'); print(f'VRAM: {torch.cuda.get_device_properties(0).total_mem / 1024**3:.1f} GB')"
+### Datasets
+
+| Dataset | Videos | Source |
+|---------|--------|--------|
+| FaceForensics++ C23 | ~7,000 | [GitHub](https://github.com/ondyari/FaceForensics) |
+| Celeb-DF v2 | ~6,000 | [GitHub](https://github.com/yuezunli/celeb-deepfakeforensics) |
+
+### Training Phases
+
+| Phase | Dataset | Epochs | Val Accuracy | Val AUC | GPU |
+|-------|---------|--------|-------------|---------|-----|
+| Phase 2 | FF++ C23 + Celeb-DF mixed | 11/18 (early stop) | 91.74% | 97.34% | NVIDIA A40 48GB |
+| Phase 3 | Celeb-DF v2 (domain adapt) | 3/8 | 95.99% | 99.00% | NVIDIA A40 48GB |
+
+### Training Command
+
+```bash
+# On a GPU server (RunPod, etc.)
+python finetune/train.py \
+    --data_dir /path/to/processed/tensors \
+    --checkpoint training_outputs/checkpoints/best_ftca_phase2.pth \
+    --epochs 20 \
+    --batch_size 8 \
+    --lr 1e-4
 ```
 
-> [!CAUTION]
-> If this shows `CUDA: False`, stop here. Reinstall PyTorch with the correct CUDA version.
+### Model Architecture
 
----
-
-### Step 4: Setup Kaggle credentials
-
-Go to https://www.kaggle.com/settings → scroll to **API** section → click **"Create New Token"**. This downloads a `kaggle.json` file. Open it — you'll see your username and key.
-
-```cmd
-python download_datasets.py --setup --username YOUR_KAGGLE_USERNAME --key YOUR_KAGGLE_API_KEY
 ```
-
-Or interactively (it will prompt you):
-```cmd
-python download_datasets.py --setup
-```
-
----
-
-### Step 5: Search for available datasets
-
-```cmd
-python download_datasets.py --search
-```
-
-This searches Kaggle for FaceForensics++ and Celeb-DF datasets and shows you what's available. Note down the **slugs** (format: `username/dataset-name`) of the ones you want.
-
----
-
-### Step 6: Edit dataset slugs (if needed)
-
-Open `download_datasets.py` in a text editor and update the `KAGGLE_DATASETS` dictionary (around line 42) with the exact slugs you found:
-
-```python
-KAGGLE_DATASETS = {
-    "ff_c23": {
-        "slug": "the-actual-slug-you-found",  # ← CHANGE THIS
-        ...
-    },
-    "celeb_df": {
-        "slug": "the-actual-slug-you-found",  # ← CHANGE THIS
-        ...
-    },
-}
-```
-
-Or download a specific dataset directly by slug:
-```cmd
-python download_datasets.py --download-slug username/dataset-name --data-root D:\datasets
+Video [B, 3, 16, 224, 224]
+    │
+    ├──→ R3D-18 Backbone (Kinetics-400 pretrained) → Temporal features [B, 512]
+    │
+    ├──→ FrequencyEncoder (torch.fft.fft2) → Frequency features [B, 512]
+    │
+    └──→ Cross-Attention (8 heads) → Fused features [B, 512]
+                │
+                └──→ Linear(512→1) → Sigmoid → P(deepfake)
 ```
 
 ---
 
-### Step 7: Download datasets
+## Deployment Architecture
 
-```cmd
-REM Set where you want datasets stored:
-set AUTHKYC_DATA_ROOT=D:\datasets
-
-REM Download all configured datasets:
-python download_datasets.py --download --data-root D:\datasets
-
-REM Or download specific ones:
-python download_datasets.py --download-slug sorokin/faceforensics --data-root D:\datasets
-python download_datasets.py --download-slug reubensuju/celeb-df-v2 --data-root D:\datasets
+```
+┌─────────────────────┐          ┌──────────────────────────┐
+│   Vercel (React)    │          │  HuggingFace Spaces      │
+│   Presentation UI   │──HTTP──→│  ZeroGPU (A10G on-demand) │
+│   authkyc.vercel.app│          │  4-stage pipeline         │
+└─────────────────────┘          │  ~15s per inference       │
+                                 └──────────────────────────┘
 ```
 
-> [!NOTE]
-> Downloads can be 15-50 GB. On a decent connection this takes 30-90 minutes. Keep the terminal open.
+- **Frontend**: React + Tailwind CSS on Vercel (free tier)
+- **Inference**: HuggingFace Spaces with ZeroGPU — GPU allocated per-request, billed per second
+- **Model**: PyTorch (cannot use ONNX due to `torch.fft.fft2` limitation)
 
 ---
 
-### Step 8: Organize into expected structure
+## Known Limitations
 
-```cmd
-python download_datasets.py --organize --data-root D:\datasets
-```
-
-This auto-maps downloaded folders to the structure the code expects. If auto-mapping fails, manually move files:
-
-```
-D:\datasets\
-├── FaceForensics++_C23\
-│   ├── original\           ← Real videos (*.mp4)
-│   ├── Deepfakes\          ← Deepfake manipulations
-│   ├── Face2Face\          ← Face2Face manipulations
-│   ├── FaceSwap\           ← FaceSwap manipulations
-│   ├── FaceShifter\        ← FaceShifter manipulations
-│   └── DeepFakeDetection\  ← DeepFakeDetection manipulations
-└── celeb-df-v2\
-    ├── Celeb-real\         ← Celeb-DF real videos
-    └── YouTube-real\       ← YouTube real videos
-```
+| Issue | Description | Mitigation |
+|-------|-------------|------------|
+| Domain Gap | Model trained on FF++/CelebDF performs differently on raw phone selfies | Weighted risk scoring instead of hard waterfall |
+| PRNU Re-encoding | Web uploads destroy sensor fingerprint | PRNU used as advisory signal, not hard gate |
+| ONNX Export | `torch.fft.fft2` has no ONNX equivalent | Using PyTorch directly with ZeroGPU |
+| Latency | ~15-17s per video on A10G | Stages can be parallelized in production |
 
 ---
 
-### Step 9: Verify everything is in place
+## Tech Stack
 
-```cmd
-python download_datasets.py --verify --data-root D:\datasets
-```
-
-You should see `✅ Dataset structure is ready for training!` with video counts for each folder.
-
----
-
-### Step 10: Configure server_config.py
-
-Open `server_config.py` and update the dataset root (line ~20):
-
-```python
-_DEFAULT_DATA = r"D:\datasets"  # ← Your actual path
-```
-
-Or just keep using the environment variable:
-```cmd
-set AUTHKYC_DATA_ROOT=D:\datasets
-```
+| Component | Technology |
+|-----------|-----------|
+| AI Model | PyTorch 2.4, R3D-18 (Kinetics-400) |
+| Training GPU | NVIDIA A40 48GB (RunPod) |
+| Inference GPU | NVIDIA A10G (HuggingFace ZeroGPU) |
+| Face Detection | MediaPipe 0.10.14 |
+| Signal Processing | NumPy, SciPy, OpenCV |
+| Frontend | React 18, Tailwind CSS, Framer Motion |
+| Hosting | Vercel (frontend), HuggingFace Spaces (backend) |
 
 ---
 
-### Step 11: Set PYTHONPATH
+## Author
 
-```cmd
-set PYTHONPATH=%cd%;%cd%\data;%cd%\finetune;%PYTHONPATH%
-```
-
----
-
-### Step 12: Run dry run test
-
-```cmd
-python dry_run_test.py
-```
-
-Wait for `✅ All tests passed`. If any test fails, fix the issue before proceeding.
+**Manmohan Vishwakarma**  
+NIT Patna (NITP), ECE 2027  
+Built for Razorpay FTX Buildathon 2025 — AI Risk Manager Track
 
 ---
 
-### Step 13: Run training!
+## License
 
-**Option A: Full pipeline (recommended)**
-```cmd
-train_server.bat
-```
-
-**Option B: Step by step**
-```cmd
-REM Phase 1: Extract face tensors from videos
-python data\extractor.py
-
-REM Phase 2: Full FTCA training (the big one)
-python data\train.py
-
-REM Phase 3: Fine-tuning (optional, after Phase 2)
-python finetune\data_extractor.py
-python finetune\train.py
-
-REM Evaluate
-python data\eval_ftca.py
-```
-
-**Option C: Only what you need**
-```cmd
-train_server.bat --phase2-only
-train_server.bat --skip-extraction
-train_server.bat --phase3-only
-```
-
----
-
-### Step 14: Monitor training
-
-```cmd
-REM View Phase 2 log (open in Excel for charts):
-type training_output\logs\phase2_training_log.csv
-
-REM View final summary:
-type training_output\logs\phase2_summary.json
-```
-
----
-
-### Step 15: Copy trained weights for deployment
-
-```cmd
-copy training_output\checkpoints\best_ftca_pad_model.pth .
-```
-
----
-
-## Complete One-Shot Command Block
-
-If you want to copy-paste everything at once (after editing paths):
-
-```cmd
-cd C:\path\to\AuthKYC--END-to-END-system-for-bank-kyc-against-AI-attacks
-python -m venv venv
-venv\Scripts\activate
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
-pip install -r requirements.txt
-pip install kaggle
-python download_datasets.py --setup --username YOUR_USER --key YOUR_KEY
-set AUTHKYC_DATA_ROOT=D:\datasets
-python download_datasets.py --download --data-root D:\datasets
-python download_datasets.py --organize --data-root D:\datasets
-python download_datasets.py --verify --data-root D:\datasets
-set PYTHONPATH=%cd%;%cd%\data;%cd%\finetune
-python dry_run_test.py
-train_server.bat
-```
-
----
-
-## Troubleshooting
-
-| Problem | Fix |
-|---------|-----|
-| `CUDA: False` | Reinstall PyTorch with correct CUDA version from `nvidia-smi` |
-| `RuntimeError: CUDA out of memory` | Set `BATCH_SIZE = 4` in `server_config.py` |
-| `BrokenPipeError` with DataLoader | Set `NUM_WORKERS = 0` in `server_config.py` |
-| `kaggle: 403 Forbidden` | Re-run `--setup` with correct credentials, or accept dataset rules on kaggle.com first |
-| `kaggle: 404 Not Found` | The dataset slug is wrong — run `--search` to find correct slug |
-| Kaggle download is very slow | Download on a browser instead, then place files manually per Step 8 |
-| Import errors | Make sure `set PYTHONPATH=%cd%;%cd%\data;%cd%\finetune` is run |
-| `OSError: [WinError 1455]` | Increase Windows virtual memory or close other apps |
-| Training loss stuck at ~0.69 | Normal for 1-2 epochs. If past epoch 5, check data loading |
-
-> [!TIP]
-> **If Kaggle is slow or the datasets aren't available as full videos**, you can download them manually through your browser from Kaggle or the official FF++ page, then unzip and place the `.mp4` files into the folder structure shown in Step 8. Run `python download_datasets.py --verify` to confirm everything is in place.
-
-
-# AuthKYC — Windows Server Commands (PowerShell)
-
-> [!IMPORTANT]
-> Your server uses **PowerShell**, not CMD. The syntax for environment variables is different:
-> - ❌ `export VAR=value` (that's Linux)
-> - ❌ `set VAR=value` (that's CMD)
-> - ✅ `$env:VAR = "value"` (that's PowerShell)
-
----
-
-## Step 1: Navigate to project
-
-```powershell
-cd C:\Users\NITP\Downloads\AuthKYC-Completed_Track-main\AuthKYC-Completed_Track-main\AuthKYC--END-to-END-system-for-bank-kyc-against-AI-attacks
-```
-
----
-
-## Step 2: Activate venv & install
-
-```powershell
-# If venv already exists:
-.\venv\Scripts\Activate
-
-# Check CUDA version:
-nvidia-smi
-
-# Install PyTorch (pick ONE matching your CUDA):
-pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
-# Or for CUDA 11.8:
-# pip install torch torchvision --index-url https://download.pytorch.org/whl/cu118
-
-# Install everything else:
-pip install -r requirements.txt
-pip install kaggle
-```
-
----
-
-## Step 3: Verify GPU
-
-```powershell
-python -c "import torch; print(f'CUDA: {torch.cuda.is_available()}'); print(f'GPU: {torch.cuda.get_device_name(0)}'); print(f'VRAM: {torch.cuda.get_device_properties(0).total_mem / 1024**3:.1f} GB')"
-```
-
----
-
-## Step 4: Setup Kaggle & download datasets
-
-```powershell
-# Setup credentials (enter username and key when prompted):
-python download_datasets.py --setup --username Manmohan732 --key YOUR_API_KEY
-
-# Search for available datasets:
-python download_datasets.py --search
-
-# Download (edit slugs in download_datasets.py first if needed):
-python download_datasets.py --download --data-root D:\datasets
-
-# Organize into expected structure:
-python download_datasets.py --organize --data-root D:\datasets
-
-# Verify:
-python download_datasets.py --verify --data-root D:\datasets
-```
-
----
-
-## Step 5: Set environment variables (PowerShell syntax!)
-
-```powershell
-$env:AUTHKYC_DATA_ROOT = "D:\datasets"
-$env:AUTHKYC_OUTPUT_ROOT = ".\training_output"
-$env:PYTHONPATH = "$PWD;$PWD\data;$PWD\finetune"
-```
-
----
-
-## Step 6: Run dry run test
-
-```powershell
-python dry_run_test.py
-```
-
----
-
-## Step 7: Run training
-
-```powershell
-# Option A: Run scripts directly (PowerShell-friendly)
-python data\extractor.py
-python data\train.py
-
-# Option B: Use the batch script (works in PowerShell too)
-.\train_server.bat
-
-# Option C: Phase by phase
-.\train_server.bat --phase2-only
-.\train_server.bat --skip-extraction
-.\train_server.bat --phase3-only
-```
-
----
-
-## Step 8: Monitor
-
-```powershell
-# Check training progress:
-Get-Content training_output\logs\phase2_training_log.csv
-
-# Check summary after completion:
-Get-Content training_output\logs\phase2_summary.json
-```
-
----
-
-## Quick Reference: PowerShell vs CMD vs Linux
-
-| Action | PowerShell | CMD | Linux/Mac |
-|--------|-----------|-----|-----------|
-| Set env var | `$env:VAR = "val"` | `set VAR=val` | `export VAR=val` |
-| Read env var | `$env:VAR` | `%VAR%` | `$VAR` |
-| Current dir | `$PWD` | `%cd%` | `$(pwd)` |
-| Activate venv | `.\venv\Scripts\Activate` | `venv\Scripts\activate` | `source venv/bin/activate` |
-| Run batch file | `.\script.bat` | `script.bat` | `./script.sh` |
-| View file | `Get-Content file` | `type file` | `cat file` |
-
----
-
-## Troubleshooting
-
-| Problem | Fix |
-|---------|-----|
-| `export: not recognized` | You're in PowerShell. Use `$env:VAR = "value"` |
-| `set VAR=value` silently fails | In PowerShell `set` is an alias. Use `$env:VAR = "value"` |
-| `No module named kaggle.__main__` | Fixed — script now uses Python API directly |
-| `CUDA: False` | Reinstall PyTorch with correct CUDA version |
-| `RuntimeError: CUDA out of memory` | Set `BATCH_SIZE = 4` in `server_config.py` |
-| `BrokenPipeError` with DataLoader | Set `NUM_WORKERS = 0` in `server_config.py` |
-| Import errors | Set `$env:PYTHONPATH = "$PWD;$PWD\data;$PWD\finetune"` |
+This project is built for educational and hackathon purposes.
