@@ -121,6 +121,7 @@ const VideoCard = ({ video, isSelected, onClick }) => {
 
   const handleMouseEnter = () => {
     if (videoRef.current) {
+      videoRef.current.currentTime = 0;
       videoRef.current.play().catch(() => {});
     }
   };
@@ -128,7 +129,13 @@ const VideoCard = ({ video, isSelected, onClick }) => {
   const handleMouseLeave = () => {
     if (videoRef.current) {
       videoRef.current.pause();
-      videoRef.current.currentTime = 0;
+      videoRef.current.currentTime = 0.5;
+    }
+  };
+
+  const handleLoadedMetadata = () => {
+    if (videoRef.current) {
+      videoRef.current.currentTime = 0.5; // Show a visible frame as thumbnail
     }
   };
 
@@ -147,8 +154,11 @@ const VideoCard = ({ video, isSelected, onClick }) => {
           muted
           loop
           playsInline
-          poster=""
-        />
+          preload="metadata"
+          onLoadedMetadata={handleLoadedMetadata}
+        >
+          <source src={video.src} type="video/mp4" />
+        </video>
         <div className="absolute top-2 right-2 flex gap-2">
           <span className={`px-2 py-0.5 text-xs font-semibold rounded ${video.type === 'Real' ? 'bg-green-900/80 text-green-300' : 'bg-red-900/80 text-red-300'}`}>
             {video.type}
