@@ -2,10 +2,10 @@
 # ZeroGPU provides A10G on-demand; torch auto-detects CUDA
 torch
 torchvision
-gradio>=4.20.0
+gradio>=5.0.0
 spaces
 opencv-python-headless>=4.8.0
-mediapipe>=0.10.0
+mediapipe==0.10.14
 numpy>=1.24.0
 scipy>=1.10.0
 matplotlib>=3.7.0

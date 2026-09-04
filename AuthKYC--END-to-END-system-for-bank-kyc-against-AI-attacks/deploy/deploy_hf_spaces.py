@@ -54,6 +54,14 @@ def package_space():
                        ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
         print(f"  ✓ modules/ ({len(os.listdir(modules_dst))} files)")
 
+    # Copy example videos (if any)
+    examples_src = os.path.join(SPACES_SRC, 'examples')
+    examples_dst = os.path.join(BUILD_DIR, 'examples')
+    if os.path.exists(examples_src) and os.listdir(examples_src):
+        shutil.copytree(examples_src, examples_dst)
+        count = len([f for f in os.listdir(examples_dst) if not f.startswith('.')])
+        print(f"  ✓ examples/ ({count} videos)")
+
     # Copy PyTorch checkpoint (not ONNX — FFT ops don't export to ONNX)
     model_dir = os.path.join(BUILD_DIR, 'model')
     os.makedirs(model_dir, exist_ok=True)

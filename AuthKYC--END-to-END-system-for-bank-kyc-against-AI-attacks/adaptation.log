@@ -1,0 +1,90 @@
+============================================================
+  AuthKYC — Local Domain Adaptation
+  Device: CPU (Mac)
+============================================================
+
+[Step 1] Extracting face sequences from videos...
+
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+I0000 00:00:1788437549.623516 1570146 gl_context.cc:357] GL version: 2.1 (2.1 Metal - 90.5), renderer: Apple M2
+  Processing REAL videos:
+INFO: Created TensorFlow Lite XNNPACK delegate for CPU.
+W0000 00:00:1788437549.639812 1570267 inference_feedback_manager.cc:114] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+/Users/manmohanvishwakarma/PycharmProjects/AuthKYC_Fork/.venv/lib/python3.10/site-packages/google/protobuf/symbol_database.py:55: UserWarning: SymbolDatabase.GetPrototype() is deprecated. Please use message_factory.GetMessageClass() instead. SymbolDatabase.GetPrototype() will be removed soon.
+  warnings.warn('SymbolDatabase.GetPrototype() is deprecated. Please '
+    ✓ 002.mp4: 150 faces → 6 sequences
+    ✓ 012.mp4: 150 faces → 6 sequences
+    ✓ 013.mp4: 150 faces → 6 sequences
+    ✓ VID20260419171259.mp4: 140 faces → 6 sequences
+    ✓ VID20260419171317.mp4: 140 faces → 6 sequences
+    ✓ VID20260419171334.mp4: 143 faces → 6 sequences
+    ✓ VID20260419171350.mp4: 133 faces → 6 sequences
+    ✓ VID20260419171405.mp4: 150 faces → 6 sequences
+    ✓ VID20260419171421.mp4: 142 faces → 6 sequences
+    ✓ VID20260419171439.mp4: 138 faces → 6 sequences
+    ✓ VID20260419171743.mp4: 150 faces → 6 sequences
+    ✓ VID20260419171821.mp4: 150 faces → 6 sequences
+    ✓ replay1.mp4: 150 faces → 6 sequences
+    ✓ replay2.mp4: 150 faces → 6 sequences
+    ✓ rppg_sample1.mp4: 150 faces → 6 sequences
+
+  Total REAL sequences: 90
+
+  Processing FAKE videos:
+    ✓ 001_870.mp4: 150 faces → 6 sequences
+    ✓ 034_590.mp4: 150 faces → 6 sequences
+    ✓ 035_036.mp4: 150 faces → 6 sequences
+    ✓ 036_035.mp4: 150 faces → 6 sequences
+    ✓ 426_287.mp4: 150 faces → 6 sequences
+    ✓ 427_637.mp4: 150 faces → 6 sequences
+    ✓ 428_466.mp4: 150 faces → 6 sequences
+
+  Total FAKE sequences: 42
+  Total: 132 sequences (90 real + 42 fake)
+
+[Step 2] Splitting into train/val...
+  Train: 106 (69 real + 37 fake)
+  Val:   26 (21 real + 5 fake)
+
+[Step 3] Loading Phase 2 checkpoint...
+[FTCA] R3D-18 loaded WITHOUT pretrained weights (random init)
+  Loaded: /Users/manmohanvishwakarma/PycharmProjects/AuthKYC_Fork/AuthKYC--END-to-END-system-for-bank-kyc-against-AI-attacks/training_outputs/checkpoints/best_ftca_phase2.pth (epoch 11)
+[FTCA] Backbone frozen. Trainable: 12,849,409 / 46,015,681 params
+  Backbone frozen. Trainable: 12,849,409 / 46,015,681 params
+
+[Step 3.5] Pre-adaptation scores on val set:
+    REAL: FTCA score = 0.1821 ✓
+    REAL: FTCA score = 0.9618 ✗ WRONG
+    REAL: FTCA score = 0.9563 ✗ WRONG
+    REAL: FTCA score = 0.9963 ✗ WRONG
+    REAL: FTCA score = 0.9686 ✗ WRONG
+    FAKE: FTCA score = 0.9745 ✓
+    REAL: FTCA score = 0.1538 ✓
+    FAKE: FTCA score = 0.9445 ✓
+    REAL: FTCA score = 0.9301 ✗ WRONG
+    REAL: FTCA score = 0.9091 ✗ WRONG
+    REAL: FTCA score = 0.9900 ✗ WRONG
+    REAL: FTCA score = 0.7641 ✗ WRONG
+    REAL: FTCA score = 0.9919 ✗ WRONG
+    REAL: FTCA score = 0.1104 ✓
+    FAKE: FTCA score = 0.9844 ✓
+    FAKE: FTCA score = 0.9686 ✓
+    REAL: FTCA score = 0.9963 ✗ WRONG
+    REAL: FTCA score = 0.9739 ✗ WRONG
+    REAL: FTCA score = 0.9960 ✗ WRONG
+    REAL: FTCA score = 0.9700 ✗ WRONG
+    REAL: FTCA score = 0.7384 ✗ WRONG
+    REAL: FTCA score = 0.0704 ✓
+    REAL: FTCA score = 0.9926 ✗ WRONG
+    REAL: FTCA score = 0.1729 ✓
+    FAKE: FTCA score = 0.6670 ✓
+    REAL: FTCA score = 0.9410 ✗ WRONG
+
+[Step 4] Fine-tuning (15 epochs, LR=5e-06, batch=2)...
+    Batch 10/53    Batch 20/53    Batch 30/53    Batch 40/53    Batch 50/53  Epoch  1/15 | 249s | Train Loss: 1.1079 Acc: 0.528 | Val Loss: 1.2184 Acc: 0.615 | AUC: 0.6762
+    >>> Saved adapted checkpoint (Val Loss: 1.2184)
+    Batch 10/53    Batch 20/53    Batch 30/53    Batch 40/53    Batch 50/53  Epoch  2/15 | 247s | Train Loss: 1.0682 Acc: 0.547 | Val Loss: 1.2421 Acc: 0.654 | AUC: 0.6381
+    [EarlyStopping] Patience 1/5
+    Batch 10/53    Batch 20/53    Batch 30/53    Batch 40/53    Batch 50/53  Epoch  3/15 | 274s | Train Loss: 1.2388 Acc: 0.509 | Val Loss: 1.4297 Acc: 0.500 | AUC: 0.6476
+    [EarlyStopping] Patience 2/5
+    Batch 10/53    Batch 20/53

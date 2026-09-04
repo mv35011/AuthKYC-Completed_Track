@@ -115,7 +115,10 @@ class DemoEngine:
     """4-stage PAD engine for the Gradio demo."""
 
     def __init__(self):
-        self.prnu = PRNUDetector(energy_threshold=0.5)
+        # PRNU threshold lowered: web-uploaded videos get re-encoded by HF/Gradio,
+        # which destroys most sensor noise. 0.08 catches true virtual cameras while
+        # reducing false positives on re-encoded phone videos.
+        self.prnu = PRNUDetector(energy_threshold=0.08)
         self.moire = ReplayAttackDetector(threshold=1500)
         self.rppg = AdvancedrPPGDetector(fps=30)
 
@@ -212,23 +215,55 @@ class DemoEngine:
             progress(0.75, desc="🧠 Running FTCA deepfake detection (GPU)...")
             ai_score = run_ftca_inference(faces[:16])
 
-        is_deepfake = bool(ai_score > 0.50)
+        # ── Weighted Decision Logic ──
+        # The hard waterfall (any-fail = deny) causes too many false positives
+        # because web-uploaded videos get re-encoded, destroying PRNU fingerprints.
+        # Instead, use a risk scoring approach:
+        #
+        # PRNU:  Advisory only — re-encoding destroys sensor noise (high false positive rate)
+        # Moiré: Hard check — FFT replay detection is reliable
+        # rPPG:  Soft check — depends on video quality/length
+        # FTCA:  Threshold 0.75 — account for domain gap (trained on FF++/CelebDF, not phone selfies)
+
+        is_deepfake = bool(ai_score > 0.75)
+
+        # Count how many stages flagged suspicious
+        risk_flags = 0
+        if not is_physical:
+            risk_flags += 1  # PRNU suspicious (but often false positive)
+        if is_replay:
+            risk_flags += 3  # Moiré is very reliable — heavy weight
+        if not is_lively:
+            risk_flags += 1  # rPPG failed
+        if is_deepfake:
+            risk_flags += 2  # FTCA flagged
 
         elapsed = time.time() - start_time
 
-        # Final decision
-        if not is_physical:
-            decision = "❌ DENIED: VIRTUAL CAMERA INJECTION"
-            decision_color = "red"
-        elif is_replay:
+        # Final decision — Moiré alone (3) or 2+ other flags trigger denial
+        if is_replay:
             decision = "❌ DENIED: SCREEN REPLAY ATTACK"
             decision_color = "red"
-        elif not is_lively:
-            decision = "❌ DENIED: BIOLOGICAL LIVENESS FAILED"
-            decision_color = "red"
+        elif risk_flags >= 3:
+            # Multiple independent signals agree → high confidence
+            if is_deepfake and not is_physical:
+                decision = "❌ DENIED: AI-GENERATED + VIRTUAL CAMERA"
+                decision_color = "red"
+            elif is_deepfake:
+                decision = "❌ DENIED: AI-GENERATED DEEPFAKE"
+                decision_color = "red"
+            elif not is_physical and not is_lively:
+                decision = "❌ DENIED: VIRTUAL CAMERA + NO LIVENESS"
+                decision_color = "red"
+            else:
+                decision = "⚠️ SUSPICIOUS: MULTIPLE RISK SIGNALS"
+                decision_color = "orange"
         elif is_deepfake:
-            decision = "❌ DENIED: AI-GENERATED DEEPFAKE"
-            decision_color = "red"
+            decision = "⚠️ REVIEW: FTCA FLAGGED AS DEEPFAKE"
+            decision_color = "orange"
+        elif not is_lively and not is_physical:
+            decision = "⚠️ REVIEW: NO LIVENESS + PRNU ANOMALY"
+            decision_color = "orange"
         else:
             decision = "✅ APPROVED: GENUINE LIVE HUMAN"
             decision_color = "green"
@@ -268,15 +303,23 @@ class DemoEngine:
 
         # Results markdown
         gpu_label = "ZeroGPU A10G" if ZEROGPU_AVAILABLE else "CPU"
+
+        prnu_result = '✅ Physical Camera' if is_physical else '⚠️ Anomaly (may be re-encoding)'
+        moire_result = '✅ No Replay' if not is_replay else '❌ Replay Detected'
+        rppg_result = '✅ Living Human' if is_lively else '⚠️ No Pulse Detected'
+        ftca_result = '✅ Genuine' if not is_deepfake else '❌ AI-Generated'
+
         stage_md = f"""
 ## 🔒 Final Decision: <span style="color:{decision_color}">{decision}</span>
 
 | Stage | Check | Score | Result |
 |-------|-------|-------|--------|
-| **1. PRNU Sensor** | Camera fingerprint authenticity | `{prnu_energy:.4f}` | {'✅ Physical Camera' if is_physical else '❌ Virtual/Injected'} |
-| **2. Moiré FFT** | Screen replay detection | `{avg_moire:.1f}` | {'✅ No Replay' if not is_replay else '❌ Replay Detected'} |
-| **3. rPPG Pulse** | Biological liveness | `SNR {snr:.1f} dB, {bpm:.1f} BPM` | {'✅ Living Human' if is_lively else '❌ No Pulse Detected'} |
-| **4. FTCA AI** | Deepfake detection | `{ai_score:.4f}` | {'✅ Genuine' if not is_deepfake else '❌ AI-Generated'} |
+| **1. PRNU Sensor** | Camera fingerprint | `{prnu_energy:.4f}` (threshold: 0.08) | {prnu_result} |
+| **2. Moiré FFT** | Screen replay detection | `{avg_moire:.1f}` | {moire_result} |
+| **3. rPPG Pulse** | Biological liveness | `SNR {snr:.1f} dB, {bpm:.1f} BPM` | {rppg_result} |
+| **4. FTCA AI** | Deepfake detection | `{ai_score:.4f}` (threshold: 0.75) | {ftca_result} |
+
+**Risk Score: {risk_flags}/7** — {'🟢 Low' if risk_flags < 2 else '🟡 Medium' if risk_flags < 3 else '🔴 High'}
 
 *⚡ {elapsed:.1f}s total | {gpu_label} | Faces: {len(faces)}/16 | Model: FTCA R3D-18 (99% AUC)*
 """
@@ -324,18 +367,33 @@ with gr.Blocks(
 
     with gr.Row():
         with gr.Column(scale=1):
-            video_input = gr.Video(label="📹 Upload KYC Video", format="mp4")
+            video_input = gr.Video(label="📹 Upload KYC Video")
             analyze_btn = gr.Button("🔍 Analyze Video", variant="primary", size="lg")
 
         with gr.Column(scale=2):
             results_md = gr.Markdown(
-                value="*Upload a video and click Analyze to begin.*",
+                value="*Upload a video or select a sample below, then click Analyze.*",
                 elem_classes=["stage-results"]
             )
 
     with gr.Row():
         fft_output = gr.Image(label="📊 FFT Frequency Spectrum (Moiré Evidence)", type="numpy")
         rppg_output = gr.Plot(label="💓 rPPG Pulse Waveform")
+
+    # Pre-loaded examples for judges
+    examples_dir = os.path.join(os.path.dirname(__file__), "examples")
+    if os.path.exists(examples_dir):
+        example_files = sorted([
+            os.path.join(examples_dir, f)
+            for f in os.listdir(examples_dir)
+            if f.endswith(('.mp4', '.avi', '.mov'))
+        ])
+        if example_files:
+            gr.Examples(
+                examples=[[f] for f in example_files],
+                inputs=[video_input],
+                label="🎬 Sample Videos (click to load)",
+            )
 
     analyze_btn.click(
         fn=engine.analyze,
