@@ -2,6 +2,7 @@
 .idea
 datasets/
 videos/
-models/
+/models/
+!experiments/models/
 best_ftca_pad_model.pth
 videos.zip

@@ -20,26 +20,53 @@ def extract_faces_from_video(video_path, mtcnn, num_frames=32, image_size=299):
         return []
     
     # Uniform sampling
-    indices = torch.linspace(0, total_frames - 1, num_frames).long().tolist()
+    indices = torch.linspace(0, max(0, total_frames - 1), num_frames).long().tolist()
     
     faces = []
     for idx in indices:
         cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
         ret, frame = cap.read()
-        if not ret:
+        if not ret or frame is None:
             continue
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         try:
-            face = mtcnn(frame_rgb)  # Returns tensor [3, image_size, image_size] or None
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            face = mtcnn(frame_rgb)
             if face is not None:
                 # MTCNN with post_process=False returns uint8-like values
-                # Convert to float [0, 1]
                 face = face.float() / 255.0 if face.max() > 1.0 else face.float()
                 faces.append(face)
-        except:
+        except Exception:
             continue
     cap.release()
     return faces
+
+
+def find_target_directory(root_dir, target_names):
+    """
+    Search root_dir recursively for any directory matching any of the candidate target_names (case-insensitive).
+    Returns list of matching directory paths.
+    """
+    matches = []
+    if not os.path.exists(root_dir):
+        return matches
+
+    target_lower = [t.lower() for t in target_names]
+
+    # First check direct children
+    for item in os.listdir(root_dir):
+        full_path = os.path.join(root_dir, item)
+        if os.path.isdir(full_path) and item.lower() in target_lower:
+            matches.append(full_path)
+
+    # If not found or if searching subtrees, walk 3 levels deep
+    if not matches:
+        for root, dirs, _ in os.walk(root_dir):
+            for d in dirs:
+                if d.lower() in target_lower:
+                    matches.append(os.path.join(root, d))
+
+    return list(set(matches))
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -49,34 +76,67 @@ def main():
     parser.add_argument("--image-size", type=int, default=299, help="Image crop size")
     args = parser.parse_args()
 
-    # Discover videos
-    real_sources = [
-        ('ff_original', CFG.FF_ORIGINAL),
-        ('celeb_real', CFG.CELEB_REAL),
-        ('celeb_youtube', CFG.CELEB_YOUTUBE)
-    ]
-    fake_sources = [
-        ('ff_deepfakes', CFG.FF_DEEPFAKES),
-        ('ff_face2face', CFG.FF_FACE2FACE),
-        ('ff_faceswap', CFG.FF_FACESWAP),
-        ('ff_faceshifter', CFG.FF_FACESHIFTER),
-        ('ff_neuraltextures', CFG.FF_NEURALTEXTURES),
-        ('celeb_fake', CFG.CELEB_FAKE)
-    ]
+    data_root = args.data_root if args.data_root else CFG.DATASET_ROOT
+    print(f"Scanning for datasets in root: {data_root}")
+
+    # Map logical source name to candidate folder names
+    real_candidates = {
+        'ff_original': ['original', 'ff_original'],
+        'celeb_real': ['Celeb-real', 'celeb_real'],
+        'celeb_youtube': ['YouTube-real', 'youtube_real']
+    }
+
+    fake_candidates = {
+        'ff_deepfakes': ['Deepfakes', 'deepfakes'],
+        'ff_face2face': ['Face2Face', 'face2face'],
+        'ff_faceswap': ['FaceSwap', 'faceswap'],
+        'ff_faceshifter': ['FaceShifter', 'faceshifter'],
+        'ff_neuraltextures': ['NeuralTextures', 'neuraltextures'],
+        'celeb_fake': ['Celeb-synthesis', 'celeb_fake', 'Celeb-fake']
+    }
 
     real_videos = []
-    for source_name, dir_path in real_sources:
-        if os.path.exists(dir_path):
-            videos = glob.glob(os.path.join(dir_path, '*.mp4'))
-            for v in videos:
+    print("\n--- Searching for REAL video folders ---")
+    for source_name, candidates in real_candidates.items():
+        found_dirs = find_target_directory(data_root, candidates)
+        total_for_source = 0
+        for d in found_dirs:
+            vids = glob.glob(os.path.join(d, '*.mp4'))
+            for v in vids:
                 real_videos.append((v, source_name))
+            total_for_source += len(vids)
+            print(f"  [FOUND] {source_name}: {d} ({len(vids)} mp4s)")
+        if not found_dirs:
+            print(f"  [MISSING] {source_name}: No folder matching {candidates} in {data_root}")
 
     fake_videos = []
-    for source_name, dir_path in fake_sources:
-        if os.path.exists(dir_path):
-            videos = glob.glob(os.path.join(dir_path, '*.mp4'))
-            for v in videos:
+    print("\n--- Searching for FAKE video folders ---")
+    for source_name, candidates in fake_candidates.items():
+        found_dirs = find_target_directory(data_root, candidates)
+        total_for_source = 0
+        for d in found_dirs:
+            vids = glob.glob(os.path.join(d, '*.mp4'))
+            for v in vids:
                 fake_videos.append((v, source_name))
+            total_for_source += len(vids)
+            print(f"  [FOUND] {source_name}: {d} ({len(vids)} mp4s)")
+        if not found_dirs:
+            print(f"  [MISSING] {source_name}: No folder matching {candidates} in {data_root}")
+
+    print(f"\nTotal Discovered: {len(real_videos)} real videos, {len(fake_videos)} fake videos")
+
+    if len(real_videos) == 0 or len(fake_videos) == 0:
+        print("\nERROR: No videos found! Listing actual contents of data_root:")
+        if os.path.exists(data_root):
+            for item in os.listdir(data_root):
+                sub = os.path.join(data_root, item)
+                if os.path.isdir(sub):
+                    print(f"  Directory: {item} -> contains: {os.listdir(sub)[:5]}")
+                else:
+                    print(f"  File: {item}")
+        else:
+            print(f"  Directory does not exist: {data_root}")
+        sys.exit(1)
 
     random.seed(42)
     random.shuffle(real_videos)
@@ -87,7 +147,7 @@ def main():
     if CFG.MAX_FAKE_VIDEOS > 0:
         fake_videos = fake_videos[:CFG.MAX_FAKE_VIDEOS]
 
-    print(f"Found {len(real_videos)} real videos and {len(fake_videos)} fake videos")
+    print(f"Selected for extraction: {len(real_videos)} real videos and {len(fake_videos)} fake videos")
 
     # Split 80/20 train/val
     def split_data(data, ratio=0.8):
@@ -104,6 +164,7 @@ def main():
 
     # Initialize MTCNN
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    print(f"Initializing MTCNN on {device} (crop size {args.image_size}x{args.image_size})...")
     mtcnn = MTCNN(image_size=args.image_size, margin=40, post_process=False, device=device)
 
     metadata = {}
@@ -113,7 +174,7 @@ def main():
             out_dir = os.path.join(args.output_root, 'frames', split_name, category)
             os.makedirs(out_dir, exist_ok=True)
             
-            print(f"Processing {split_name} - {category} ({len(videos)} videos)...")
+            print(f"Extracting {split_name}/{category} ({len(videos)} videos)...")
             for video_path, source_name in tqdm(videos):
                 video_name = os.path.splitext(os.path.basename(video_path))[0]
                 metadata[video_name] = source_name

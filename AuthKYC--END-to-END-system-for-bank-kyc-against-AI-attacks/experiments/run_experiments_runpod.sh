@@ -36,6 +36,16 @@ python3 -c "import torch; print(f'CUDA: {torch.cuda.is_available()}, Device: {to
 # ------------------------------------------------------------------------------
 echo ""
 echo "[Step 1/8] Extracting Face Frames for 2D Baselines..."
+
+# If previous run created empty folder with 0 tensors, wipe it to re-extract cleanly
+if [ -d "$AUTHKYC_OUTPUT/frames/train/real" ]; then
+    NUM_FRAMES=$(find "$AUTHKYC_OUTPUT/frames" -name "*.pt" 2>/dev/null | wc -l)
+    if [ "$NUM_FRAMES" -eq 0 ]; then
+        echo "  Cleaning up previous empty extraction..."
+        rm -rf "$AUTHKYC_OUTPUT/frames"
+    fi
+fi
+
 if [ -d "$AUTHKYC_OUTPUT/frames/train/real" ] && [ "$(ls -A "$AUTHKYC_OUTPUT/frames/train/real" 2>/dev/null)" ]; then
     echo "  Frames already exist in $AUTHKYC_OUTPUT/frames, skipping extraction."
 else

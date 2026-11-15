@@ -8,8 +8,9 @@ from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from sklearn.metrics import roc_auc_score
 
-# Add experiments/ to path so we can import config, models, data
+# Add experiments/ and project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
 
 from models.xception_baseline import XceptionBaseline
 from models.efficientnet_baseline import EfficientNetBaseline
