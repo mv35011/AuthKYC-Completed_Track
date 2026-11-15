@@ -2,7 +2,7 @@
 
 > **Defending Bank KYC Video Verification Against AI-Powered Attacks**
 > 
-> Built for [Razorpay FTX Buildathon 2025](https://unstop.com/hackathons/razorpay-ftx-2025-razorpay-1464825) — AI Risk Manager Track
+> Built for [Razorpay AI Buildathon](https://razorpay.com/buildathon/) — Track 02: AI Risk Manager
 
 ---
 
@@ -216,7 +216,7 @@ Video [B, 3, 16, 224, 224]
 
 **Manmohan Vishwakarma**  
 NIT Patna (NITP), ECE 2027  
-Built for Razorpay FTX Buildathon 2025 — AI Risk Manager Track
+Built for Razorpay AI Buildathon — AI Risk Manager Track
 
 ---
 

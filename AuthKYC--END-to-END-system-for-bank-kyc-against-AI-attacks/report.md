@@ -280,4 +280,4 @@ React + Tailwind CSS deployed on Vercel. Features:
 ---
 
 *AuthKYC — Manmohan Vishwakarma, NIT Patna, ECE 2027*  
-*Razorpay FTX Buildathon 2025 — AI Risk Manager Track*
+*Razorpay AI Buildathon — Track 02: AI Risk Manager*
