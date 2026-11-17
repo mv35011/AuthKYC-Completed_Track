@@ -83,7 +83,7 @@ def main():
         dataset = FrameDataset(args.data_dir, transform=get_transforms(args.model))
         loader = DataLoader(dataset, batch_size=32, shuffle=False, num_workers=0)
     else:
-        dataset = VideoSequenceDataset(args.data_dir)
+        dataset = VideoSequenceDataset(args.data_dir, is_training=False, augment=False)
         loader = DataLoader(dataset, batch_size=4, shuffle=False, num_workers=0)
 
     all_labels = []

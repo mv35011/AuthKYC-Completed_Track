@@ -82,8 +82,8 @@ def main():
     print(f"Using device: {device}")
 
     # Video models use ImageNet normalization inside the dataset
-    train_dataset = VideoSequenceDataset(os.path.join(args.data_dir, 'train'))
-    val_dataset = VideoSequenceDataset(os.path.join(args.data_dir, 'val'))
+    train_dataset = VideoSequenceDataset(os.path.join(args.data_dir, 'train'), is_training=True, augment=True)
+    val_dataset = VideoSequenceDataset(os.path.join(args.data_dir, 'val'), is_training=False, augment=False)
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=0)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
@@ -101,27 +101,32 @@ def main():
 
     criterion = nn.BCEWithLogitsLoss()
     optimizer = AdamW(model.parameters(), lr=args.lr, weight_decay=1e-4)
-    scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs)
 
     start_epoch = 0
-    if args.resume:
-        checkpoint = torch.load(args.resume)
-        model.load_state_dict(checkpoint['model_state_dict'])
-        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
-        start_epoch = checkpoint['epoch'] + 1
-
-    best_val_auc = 0
-    best_val_acc = 0
+    best_val_auc = 0.0
+    best_val_acc = 0.0
     best_epoch = 0
     epochs_no_improve = 0
-    
+
+    if args.resume:
+        checkpoint = torch.load(args.resume, map_location=device)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        start_epoch = checkpoint.get('epoch', 0) + 1
+        best_val_auc = checkpoint.get('best_auc', 0.0)
+        best_epoch = start_epoch
+        print(f"Resuming from epoch {start_epoch+1}/{args.epochs}, loaded best AUC: {best_val_auc:.4f}")
+
+    remaining_epochs = max(1, args.epochs - start_epoch)
+    scheduler = CosineAnnealingLR(optimizer, T_max=remaining_epochs, eta_min=1e-6)
+
     os.makedirs('experiment_outputs/checkpoints', exist_ok=True)
     log_file = f'experiment_outputs/{args.model}_training_log.csv'
-    
-    with open(log_file, mode='w', newline='') as f:
+
+    file_mode = 'a' if (args.resume and os.path.exists(log_file)) else 'w'
+    with open(log_file, mode=file_mode, newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(['epoch', 'train_loss', 'train_acc', 'val_loss', 'val_acc', 'val_auc'])
+        if file_mode == 'w':
+            writer.writerow(['epoch', 'train_loss', 'train_acc', 'val_loss', 'val_acc', 'val_auc'])
 
     for epoch in range(start_epoch, args.epochs):
         print(f"\nEpoch {epoch+1}/{args.epochs}")
