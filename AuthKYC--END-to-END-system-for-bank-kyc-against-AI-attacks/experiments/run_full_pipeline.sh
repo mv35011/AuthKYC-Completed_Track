@@ -127,8 +127,9 @@ else
     else
         log "Downloading from GDrive (ID: $GDRIVE_FILE_ID)..."
         cd /workspace
-        gdown "$GDRIVE_FILE_ID" -O authkyc_checkpoints_and_results.zip --fuzzy || {
-            error "gdown failed. Try: gdown 'https://drive.google.com/uc?id=$GDRIVE_FILE_ID'"
+        gdown "https://drive.google.com/uc?id=$GDRIVE_FILE_ID" -O authkyc_checkpoints_and_results.zip || \
+        gdown "$GDRIVE_FILE_ID" -O authkyc_checkpoints_and_results.zip || {
+            error "gdown failed."
             warn "Continuing without previous checkpoints..."
         }
 
