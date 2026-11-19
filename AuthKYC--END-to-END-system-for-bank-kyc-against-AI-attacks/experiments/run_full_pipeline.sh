@@ -70,7 +70,7 @@ python3 -c "
 import torch
 if torch.cuda.is_available():
     gpu = torch.cuda.get_device_name(0)
-    vram = torch.cuda.get_device_properties(0).total_mem / (1024**3)
+    vram = torch.cuda.get_device_properties(0).total_memory / (1024**3)
     print(f'  GPU: {gpu} ({vram:.1f} GB VRAM)')
     print(f'  PyTorch: {torch.__version__}')
 else:
@@ -81,7 +81,7 @@ else:
 # ── 1. Pull Latest Code ──────────────────────────────────────────────────────
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-log "[Step 1/8] Pulling latest code from GitHub..."
+log "[Step 1/9] Pulling latest code from GitHub..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 cd "$PROJECT_DIR"
