@@ -94,6 +94,19 @@ class DeepfakeDataExtractor:
         print(f"  {video_name} -> {num_sequences} seqs")
 
 
+def find_target_directory(root_dir, target_names):
+    """Recursively search for folders matching any name in target_names that contain .mp4 files."""
+    matches = []
+    if not os.path.exists(root_dir):
+        return matches
+    for current_root, dirs, files in os.walk(root_dir):
+        base = os.path.basename(current_root)
+        if any(base.lower() == t.lower() for t in target_names):
+            if any(f.endswith('.mp4') for f in files):
+                matches.append(current_root)
+    return matches
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Extract face sequences from video datasets")
     parser.add_argument("--data-root", type=str, default=None,
@@ -122,27 +135,44 @@ if __name__ == "__main__":
     print("=" * 50)
 
     # --- 1. GATHER REAL VIDEOS (FF++ and Celeb-DF) ---
-    real_paths = []
-    real_folders = [CFG.FF_ORIGINAL, CFG.CELEB_REAL, CFG.CELEB_YOUTUBE]
-    for folder in real_folders:
-        if os.path.exists(folder):
-            real_paths.extend(glob.glob(f"{folder}/*.mp4"))
-            print(f"  Found {folder}: {len(glob.glob(f'{folder}/*.mp4'))} videos")
-        else:
-            print(f"  [SKIP] {folder} not found")
+    real_candidates = {
+        'ff_original': ['original', 'ff_original'],
+        'celeb_real': ['Celeb-real', 'celeb_real'],
+        'celeb_youtube': ['YouTube-real', 'youtube_real']
+    }
 
-    # --- 2. GATHER FAKE VIDEOS (FF++ all methods) ---
+    real_paths = []
+    print("\n--- Searching for REAL video folders ---")
+    for source_name, candidates in real_candidates.items():
+        found_dirs = find_target_directory(CFG.DATASET_ROOT, candidates)
+        for d in found_dirs:
+            vids = glob.glob(os.path.join(d, "*.mp4"))
+            real_paths.extend(vids)
+            print(f"  [FOUND] {source_name}: {d} ({len(vids)} mp4s)")
+        if not found_dirs:
+            print(f"  [MISSING] {source_name}: No folder matching {candidates} in {CFG.DATASET_ROOT}")
+
+    # --- 2. GATHER FAKE VIDEOS (FF++ all methods + Celeb-synthesis) ---
+    fake_candidates = {
+        'ff_deepfakes': ['Deepfakes', 'deepfakes'],
+        'ff_face2face': ['Face2Face', 'face2face'],
+        'ff_faceswap': ['FaceSwap', 'faceswap'],
+        'ff_faceshifter': ['FaceShifter', 'faceshifter'],
+        'ff_neuraltextures': ['NeuralTextures', 'neuraltextures'],
+        'ff_deepfakedetection': ['DeepFakeDetection', 'deepfakedetection'],
+        'celeb_fake': ['Celeb-synthesis', 'celeb_fake', 'Celeb-fake']
+    }
+
     fake_paths = []
-    fake_folders = [
-        CFG.FF_DEEPFAKES, CFG.FF_FACE2FACE, CFG.FF_FACESWAP,
-        CFG.FF_FACESHIFTER, CFG.FF_DEEPFAKEDETECTION
-    ]
-    for folder in fake_folders:
-        if os.path.exists(folder):
-            fake_paths.extend(glob.glob(f"{folder}/*.mp4"))
-            print(f"  Found {folder}: {len(glob.glob(f'{folder}/*.mp4'))} videos")
-        else:
-            print(f"  [SKIP] {folder} not found")
+    print("\n--- Searching for FAKE video folders ---")
+    for source_name, candidates in fake_candidates.items():
+        found_dirs = find_target_directory(CFG.DATASET_ROOT, candidates)
+        for d in found_dirs:
+            vids = glob.glob(os.path.join(d, "*.mp4"))
+            fake_paths.extend(vids)
+            print(f"  [FOUND] {source_name}: {d} ({len(vids)} mp4s)")
+        if not found_dirs:
+            print(f"  [MISSING] {source_name}: No folder matching {candidates} in {CFG.DATASET_ROOT}")
 
     # --- 3. SHUFFLE AND CAP (Balance) ---
     random.seed(CFG.RANDOM_SEED)

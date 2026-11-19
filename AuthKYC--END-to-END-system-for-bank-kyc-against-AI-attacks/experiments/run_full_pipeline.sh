@@ -91,16 +91,16 @@ success "Code is up to date."
 # ── 2. Install Dependencies ──────────────────────────────────────────────────
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-log "[Step 2/8] Installing dependencies..."
+log "[Step 2/9] Installing dependencies..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-pip install -q gdown facenet-pytorch scikit-learn matplotlib tqdm torchvision 2>/dev/null || true
+pip install -q gdown kaggle facenet-pytorch scikit-learn matplotlib tqdm torchvision 2>/dev/null || true
 success "Dependencies installed."
 
 # ── 3. Download Previous Checkpoints from GDrive ─────────────────────────────
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-log "[Step 3/8] Downloading previous checkpoints from GDrive..."
+log "[Step 3/9] Downloading previous checkpoints from GDrive..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # Check if all 4 baseline checkpoints already exist
@@ -160,16 +160,72 @@ for ckpt in best_xception.pth best_efficientnet.pth best_r3d18_vanilla.pth best_
         size=$(du -sh "$OUTPUT_ROOT/checkpoints/$ckpt" | cut -f1)
         success "  $ckpt ($size)"
     else
-        warn "  $ckpt — MISSING (will train)"
+        warn "  $ckpt — MISSING (will train if needed)"
     fi
 done
 
 cd "$PROJECT_DIR"
 
-# ── 4. Extract Video Sequences (16-frame clips for R3D-18 / FTCA) ────────────
+# ── 4. Check & Download Raw Video Datasets from Kaggle ───────────────────────
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-log "[Step 4/8] Extracting 16-frame face sequences for video models..."
+log "[Step 4/9] Checking raw video datasets in $DATASET_ROOT..."
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+mkdir -p "$DATASET_ROOT"
+NUM_RAW_VIDEOS=$(find "$DATASET_ROOT" -name "*.mp4" 2>/dev/null | head -20 | wc -l)
+
+if [ "$NUM_RAW_VIDEOS" -ge 10 ]; then
+    success "Raw video datasets already found in $DATASET_ROOT ($NUM_RAW_VIDEOS+ mp4s detected). Skipping download."
+else
+    log "Datasets not found in $DATASET_ROOT. Setting up Kaggle credentials..."
+
+    # Setup Kaggle credentials
+    mkdir -p ~/.kaggle
+    if [ ! -f ~/.kaggle/kaggle.json ]; then
+        K_USER="${KAGGLE_USERNAME:-Manmohan732}"
+        K_KEY="${KAGGLE_KEY:-KGAT_ffe57c5be413bde7b98d8bc7f8690571}"
+        echo "{\"username\":\"$K_USER\",\"key\":\"$K_KEY\"}" > ~/.kaggle/kaggle.json
+        chmod 600 ~/.kaggle/kaggle.json
+        log "Configured Kaggle credentials for user: $K_USER"
+    fi
+
+    # 1. Download FF++ C23 (~18 GB)
+    log "Downloading FaceForensics++ C23 from Kaggle (xdxd003/ff-c23)..."
+    cd "$DATASET_ROOT"
+    kaggle datasets download -d xdxd003/ff-c23 -p "$DATASET_ROOT"
+
+    log "Extracting FF++ C23..."
+    mkdir -p FaceForensics++_C23
+    unzip -q ff-c23.zip -d FaceForensics++_C23/
+    if [ -d "FaceForensics++_C23/ff-c23" ]; then
+        mv FaceForensics++_C23/ff-c23/* FaceForensics++_C23/ 2>/dev/null || true
+        rmdir FaceForensics++_C23/ff-c23 2>/dev/null || true
+    fi
+    rm -f ff-c23.zip
+    success "FaceForensics++ C23 extracted and ready."
+
+    # 2. Download Celeb-DF v2 (~10 GB)
+    log "Downloading Celeb-DF v2 from Kaggle (reubensuju/celeb-df-v2)..."
+    kaggle datasets download -d reubensuju/celeb-df-v2 -p "$DATASET_ROOT"
+
+    log "Extracting Celeb-DF v2..."
+    mkdir -p celeb-df-v2
+    unzip -q celeb-df-v2.zip -d celeb-df-v2/
+    if [ -d "celeb-df-v2/celeb-df-v2" ]; then
+        mv celeb-df-v2/celeb-df-v2/* celeb-df-v2/ 2>/dev/null || true
+        rmdir celeb-df-v2/celeb-df-v2 2>/dev/null || true
+    fi
+    rm -f celeb-df-v2.zip
+    success "Celeb-DF v2 extracted and ready."
+
+    cd "$PROJECT_DIR"
+fi
+
+# ── 5. Extract Video Sequences (16-frame clips for R3D-18 / FTCA) ────────────
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+log "[Step 5/9] Extracting 16-frame face sequences for video models..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 TRAIN_REAL_COUNT=$(find "$OUTPUT_ROOT/processed_tensors/train/real" -name "*.pt" 2>/dev/null | wc -l)
@@ -185,10 +241,10 @@ else
     success "Video sequence extraction complete."
 fi
 
-# ── 5. Extract Face Frames (for XceptionNet & EfficientNet 2D baselines) ─────
+# ── 6. Extract Face Frames (for XceptionNet & EfficientNet 2D baselines) ─────
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-log "[Step 5/8] Extracting face frames for 2D baselines..."
+log "[Step 6/9] Extracting face frames for 2D baselines..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 FRAME_REAL_COUNT=$(find "$OUTPUT_ROOT/frames/train/real" -name "*.pt" 2>/dev/null | wc -l)
@@ -210,10 +266,10 @@ else
     success "Frame extraction complete."
 fi
 
-# ── 6. Train FTCA with Fixed Phase 2 Recipe ──────────────────────────────────
+# ── 7. Train FTCA with Fixed Phase 2 Recipe ──────────────────────────────────
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-log "[Step 6/8] Training FTCA (Dual-Domain Cross-Attention) — FIXED RECIPE"
+log "[Step 7/9] Training FTCA (Dual-Domain Cross-Attention) — FIXED RECIPE"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 log "  Scheduler:   CosineAnnealingWarmRestarts(T_0=10, T_mult=2)"
@@ -236,10 +292,10 @@ python3 experiments/train_video_model.py \
 
 success "FTCA training complete!"
 
-# ── 7. Evaluate All 5 Models ─────────────────────────────────────────────────
+# ── 8. Evaluate All 5 Models ─────────────────────────────────────────────────
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-log "[Step 7/8] Evaluating all 5 models on the identical validation split..."
+log "[Step 8/9] Evaluating all 5 models on the identical validation split..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 # 7a. XceptionNet
@@ -317,10 +373,10 @@ else
     fi
 fi
 
-# ── 8. Generate Paper Tables & Package Results ────────────────────────────────
+# ── 9. Generate Paper Tables & Package Results ────────────────────────────────
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-log "[Step 8/8] Generating publication tables & packaging results..."
+log "[Step 9/9] Generating publication tables & packaging results..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
 python3 experiments/generate_paper_tables.py
