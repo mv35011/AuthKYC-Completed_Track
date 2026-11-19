@@ -52,6 +52,7 @@ OUTPUT_ROOT="/workspace/experiment_outputs"
 export PYTHONPATH="$PROJECT_DIR:$PROJECT_DIR/experiments:$PROJECT_DIR/modules:$PROJECT_DIR/data"
 export AUTHKYC_DATA="$DATASET_ROOT"
 export AUTHKYC_OUTPUT="$OUTPUT_ROOT"
+export AUTHKYC_OUTPUT_ROOT="$OUTPUT_ROOT"
 
 mkdir -p "$OUTPUT_ROOT/checkpoints"
 mkdir -p "$OUTPUT_ROOT/results"
@@ -280,6 +281,19 @@ log "  Weight Decay: 1e-3"
 log "  Patience:     7"
 log "  Epochs:       25"
 echo ""
+
+# Ensure processed_tensors are in $OUTPUT_ROOT/processed_tensors
+for candidate_dir in "training_output/processed_tensors" "/workspace/training_output/processed_tensors" "$PROJECT_DIR/training_output/processed_tensors"; do
+    if [ -d "$candidate_dir/train/real" ] && [ "$(ls -A "$candidate_dir/train/real" 2>/dev/null)" ]; then
+        log "Found extracted tensors in $candidate_dir! Syncing to $OUTPUT_ROOT/processed_tensors/..."
+        mkdir -p "$OUTPUT_ROOT/processed_tensors"
+        cp -rn "$candidate_dir"/* "$OUTPUT_ROOT/processed_tensors/" 2>/dev/null || true
+    fi
+done
+
+TRAIN_TENSORS=$(find "$OUTPUT_ROOT/processed_tensors/train" -name "*.pt" 2>/dev/null | wc -l)
+VAL_TENSORS=$(find "$OUTPUT_ROOT/processed_tensors/val" -name "*.pt" 2>/dev/null | wc -l)
+log "Tensor inventory: $TRAIN_TENSORS train tensors, $VAL_TENSORS val tensors"
 
 # Always retrain FTCA fresh with the fixed recipe
 python3 experiments/train_video_model.py \

@@ -38,10 +38,20 @@ class _Config:
     CUSTOM_WEBCAM_DIR = os.path.join(DATASET_ROOT, "custom_webcam")
 
     # ─── Output Paths ───
-    OUTPUT_ROOT = os.environ.get("AUTHKYC_OUTPUT_ROOT", "./training_output")
-    PROCESSED_TENSORS = os.path.join(OUTPUT_ROOT, "processed_tensors")
-    CHECKPOINTS_DIR = os.path.join(OUTPUT_ROOT, "checkpoints")
-    LOGS_DIR = os.path.join(OUTPUT_ROOT, "logs")
+    _DEFAULT_OUTPUT = "./training_output"
+    OUTPUT_ROOT = os.environ.get("AUTHKYC_OUTPUT_ROOT", os.environ.get("AUTHKYC_OUTPUT", _DEFAULT_OUTPUT))
+
+    @property
+    def PROCESSED_TENSORS(self):
+        return os.path.join(self.OUTPUT_ROOT, "processed_tensors")
+
+    @property
+    def CHECKPOINTS_DIR(self):
+        return os.path.join(self.OUTPUT_ROOT, "checkpoints")
+
+    @property
+    def LOGS_DIR(self):
+        return os.path.join(self.OUTPUT_ROOT, "logs")
 
     # ─── Data Extraction ───
     IMAGE_SIZE = 224
