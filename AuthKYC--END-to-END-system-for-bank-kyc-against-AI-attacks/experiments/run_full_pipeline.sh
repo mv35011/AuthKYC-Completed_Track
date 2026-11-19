@@ -94,7 +94,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 log "[Step 2/9] Installing dependencies..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-pip install -q gdown kaggle facenet-pytorch scikit-learn matplotlib tqdm torchvision 2>/dev/null || true
+pip install -q gdown kaggle facenet-pytorch scikit-learn matplotlib tqdm torchvision opencv-python-headless 2>/dev/null || true
 success "Dependencies installed."
 
 # ── 3. Download Previous Checkpoints from GDrive ─────────────────────────────
