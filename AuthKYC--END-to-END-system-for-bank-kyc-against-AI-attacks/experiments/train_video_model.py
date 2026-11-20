@@ -233,10 +233,16 @@ def main():
                              f"{val_loss:.6f}", f"{val_acc:.6f}", f"{val_auc:.6f}",
                              f"{current_lr:.2e}", f"{epoch_time:.1f}"])
 
-        # Track best by val_loss (more stable than AUC, matches original Phase 2)
+        # Track best by AUC (primary paper metric) or val_loss
+        improved = False
+        if val_auc > best_val_auc:
+            best_val_auc = val_auc
+            improved = True
         if val_loss < best_val_loss:
             best_val_loss = val_loss
-            best_val_auc = val_auc
+            improved = True
+
+        if improved:
             best_val_acc = val_acc
             best_epoch = epoch + 1
             torch.save({
@@ -249,7 +255,7 @@ def main():
                 'best_auc': best_val_auc,
             }, best_ckpt_path)
             epochs_no_improve = 0
-            print(f"  >>> Saved Best Checkpoint (Val Loss: {val_loss:.4f}, Acc: {val_acc:.4f}, AUC: {val_auc:.4f})")
+            print(f"  >>> Saved Best Checkpoint (Val Loss: {val_loss:.4f}, Acc: {val_acc:.4f}, AUC: {best_val_auc:.4f})")
         else:
             epochs_no_improve += 1
             print(f"  [EarlyStopping] Patience {epochs_no_improve}/{args.patience}")
