@@ -74,6 +74,7 @@ def main():
     parser.add_argument("--output-root", type=str, required=True, help="Output root dir")
     parser.add_argument("--frames-per-video", type=int, default=32, help="Frames to extract per video")
     parser.add_argument("--image-size", type=int, default=299, help="Image crop size")
+    parser.add_argument("--val-only", action="store_true", help="Only extract validation split (for evaluation)")
     args = parser.parse_args()
 
     data_root = args.data_root if args.data_root else CFG.DATASET_ROOT
@@ -157,10 +158,16 @@ def main():
     train_real, val_real = split_data(real_videos)
     train_fake, val_fake = split_data(fake_videos)
 
-    splits = {
-        'train': {'real': train_real, 'fake': train_fake},
-        'val': {'real': val_real, 'fake': val_fake}
-    }
+    if args.val_only:
+        splits = {
+            'val': {'real': val_real, 'fake': val_fake}
+        }
+        print(f"Mode: Validation Only extraction ({len(val_real)} real, {len(val_fake)} fake)")
+    else:
+        splits = {
+            'train': {'real': train_real, 'fake': train_fake},
+            'val': {'real': val_real, 'fake': val_fake}
+        }
 
     # Initialize MTCNN
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -179,6 +186,11 @@ def main():
                 video_name = os.path.splitext(os.path.basename(video_path))[0]
                 metadata[video_name] = source_name
                 
+                # Skip if already extracted
+                first_frame = os.path.join(out_dir, f"{video_name}_0.pt")
+                if os.path.exists(first_frame):
+                    continue
+
                 faces = extract_faces_from_video(video_path, mtcnn, args.frames_per_video, args.image_size)
                 for idx, face_tensor in enumerate(faces):
                     out_path = os.path.join(out_dir, f"{video_name}_{idx}.pt")

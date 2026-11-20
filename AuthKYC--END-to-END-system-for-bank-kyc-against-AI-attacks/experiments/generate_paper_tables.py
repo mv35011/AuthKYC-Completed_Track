@@ -5,11 +5,21 @@ Reads all evaluation JSONs from experiment_outputs/results/ and outputs:
 - Table 2: Ablation Study
 """
 import os
+import sys
 import json
 import glob
+import argparse
 
 def main():
-    results_dir = "experiment_outputs/results"
+    parser = argparse.ArgumentParser(description="Generate paper tables")
+    parser.add_argument('--results-dir', type=str, default=None, help='Directory containing *_eval.json files')
+    args = parser.parse_args()
+
+    default_dir = os.path.join(os.environ.get("AUTHKYC_OUTPUT", "experiment_outputs"), "results")
+    results_dir = args.results_dir or default_dir
+    if not os.path.exists(results_dir) and os.path.exists("experiment_outputs/results"):
+        results_dir = "experiment_outputs/results"
+
     if not os.path.exists(results_dir):
         print(f"Directory {results_dir} not found. Run evaluations first.")
         return
@@ -118,5 +128,66 @@ def main():
 \end{tabular}
 \end{table*}""")
 
-if __name__ == "__main__":
-    main()
+    # Save markdown and latex tables to files
+    parent_dir = os.path.dirname(results_dir.rstrip('/\\'))
+    md_t1_path = os.path.join(parent_dir, "table1_comparison.md")
+    md_t2_path = os.path.join(parent_dir, "table2_ablation.md")
+    tex_path = os.path.join(parent_dir, "tables_latex.tex")
+
+    with open(md_t1_path, 'w') as f:
+        f.write("# Table 1: Model Benchmark Comparison\n\n")
+        f.write("| Method | Modality | Params | Accuracy (%) | AUC-ROC (%) | Precision (%) | Recall (%) | F1-Score | EER (%) |\n")
+        f.write("| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |\n")
+        for k in ["xception", "efficientnet", "r3d18_vanilla", "r3d18_freq_concat", "ftca_full"]:
+            if k in data:
+                m = data[k]
+                acc = m.get("accuracy", 0) * 100
+                auc = m.get("auc_roc", 0) * 100
+                prec = m.get("precision", 0) * 100
+                rec = m.get("recall", 0) * 100
+                f1 = m.get("f1_score", 0)
+                eer = m.get("eer", 0) * 100
+                bold = "**" if k == "ftca_full" else ""
+                f.write(f"| {bold}{display_names[k]}{bold} | {types[k]} | {params[k]} | {bold}{acc:.2f}%{bold} | {bold}{auc:.2f}%{bold} | {prec:.2f}% | {rec:.2f}% | {f1:.4f} | {eer:.2f}% |\n")
+
+    with open(md_t2_path, 'w') as f:
+        f.write("# Table 2: Ablation Study\n\n")
+        f.write("| Architecture Variant | Spatio-Temporal RGB | FFT Freq Stream | Fusion Strategy | AUC-ROC (%) | EER (%) |\n")
+        f.write("| :--- | :---: | :---: | :---: | :---: | :---: |\n")
+        for key, name, rgb, freq, fusion in ablations:
+            if key in data:
+                m = data[key]
+                auc = m.get("auc_roc", 0) * 100
+                eer = m.get("eer", 0) * 100
+                bold = "**" if key == "ftca_full" else ""
+                f.write(f"| {bold}{name}{bold} | {rgb} | {freq} | {fusion} | {bold}{auc:.2f}%{bold} | {eer:.2f}% |\n")
+
+    with open(tex_path, 'w') as f:
+        f.write(r"""\begin{table*}[t]
+\centering
+\caption{Comparative performance of AuthKYC (FTCA) against frame-level and spatio-temporal baselines on FaceForensics++ (C23) and Celeb-DF v2.}
+\label{tab:benchmark}
+\begin{tabular}{llccccccc}
+\toprule
+\textbf{Method} & \textbf{Modality} & \textbf{Params} & \textbf{Accuracy (\%)} & \textbf{AUC-ROC (\%)} & \textbf{Precision (\%)} & \textbf{Recall (\%)} & \textbf{F1} & \textbf{EER (\%)} \\
+\midrule
+""")
+        for k in ["xception", "efficientnet", "r3d18_vanilla", "r3d18_freq_concat", "ftca_full"]:
+            if k in data:
+                m = data[k]
+                acc = m.get("accuracy", 0) * 100
+                auc = m.get("auc_roc", 0) * 100
+                prec = m.get("precision", 0) * 100
+                rec = m.get("recall", 0) * 100
+                f1 = m.get("f1_score", 0)
+                eer = m.get("eer", 0) * 100
+                if k == "ftca_full":
+                    f.write(f"\\textbf{{{display_names[k]}}} & {types[k]} & {params[k]} & \\textbf{{{acc:.2f}}} & \\textbf{{{auc:.2f}}} & \\textbf{{{prec:.2f}}} & \\textbf{{{rec:.2f}}} & \\textbf{{{f1:.4f}}} & \\textbf{{{eer:.2f}}} \\\\\n")
+                else:
+                    f.write(f"{display_names[k]} & {types[k]} & {params[k]} & {acc:.2f} & {auc:.2f} & {prec:.2f} & {rec:.2f} & {f1:.4f} & {eer:.2f} \\\\\n")
+        f.write(r"""\bottomrule
+\end{tabular}
+\end{table*}
+""")
+
+    print(f"\n[✓] Tables successfully written to:\n  - {md_t1_path}\n  - {md_t2_path}\n  - {tex_path}")

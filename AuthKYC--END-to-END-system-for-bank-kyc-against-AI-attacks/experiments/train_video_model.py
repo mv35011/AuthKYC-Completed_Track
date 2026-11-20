@@ -105,6 +105,7 @@ def main():
     parser.add_argument('--weight-decay', type=float, default=1e-3)
     parser.add_argument('--resume', type=str, default=None)
     parser.add_argument('--patience', type=int, default=7)
+    parser.add_argument('--output-dir', type=str, default=None, help='Output directory for checkpoints and logs')
     parser.add_argument('--no-amp', action='store_true', help='Disable mixed precision')
     args = parser.parse_args()
 
@@ -115,8 +116,14 @@ def main():
     num_workers = 4 if sys.platform != 'win32' else 0
 
     # Datasets — with proper augmentation for training
-    train_dataset = VideoSequenceDataset(os.path.join(args.data_dir, 'train'), is_training=True, augment=True)
-    val_dataset = VideoSequenceDataset(os.path.join(args.data_dir, 'val'), is_training=False, augment=False)
+    train_dir = os.path.join(args.data_dir, 'train')
+    val_dir = os.path.join(args.data_dir, 'val')
+    train_dataset = VideoSequenceDataset(train_dir, is_training=True, augment=True)
+    val_dataset = VideoSequenceDataset(val_dir, is_training=False, augment=False)
+
+    if len(train_dataset) == 0:
+        raise ValueError(f"No training samples found in {train_dir}! "
+                         f"Please ensure extractor.py finished extracting sequences.")
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True,
                               num_workers=num_workers, pin_memory=True,
@@ -165,8 +172,11 @@ def main():
         best_epoch = start_epoch
         print(f"Resuming from epoch {start_epoch + 1}/{args.epochs}, best val_loss: {best_val_loss:.4f}, best AUC: {best_val_auc:.4f}")
 
-    os.makedirs('experiment_outputs/checkpoints', exist_ok=True)
-    log_file = f'experiment_outputs/{args.model}_training_log.csv'
+    output_dir = args.output_dir or os.environ.get('AUTHKYC_OUTPUT') or 'experiment_outputs'
+    checkpoints_dir = os.path.join(output_dir, 'checkpoints')
+    os.makedirs(checkpoints_dir, exist_ok=True)
+    best_ckpt_path = os.path.join(checkpoints_dir, f'best_{args.model}.pth')
+    log_file = os.path.join(output_dir, f'{args.model}_training_log.csv')
 
     file_mode = 'a' if (args.resume and os.path.exists(log_file)) else 'w'
     with open(log_file, mode=file_mode, newline='') as f:
@@ -210,7 +220,7 @@ def main():
                 'val_acc': val_acc,
                 'val_auc': val_auc,
                 'best_auc': best_val_auc,
-            }, f'experiment_outputs/checkpoints/best_{args.model}.pth')
+            }, best_ckpt_path)
             epochs_no_improve = 0
             print(f"  >>> Saved Best Checkpoint (Val Loss: {val_loss:.4f}, Acc: {val_acc:.4f}, AUC: {val_auc:.4f})")
         else:

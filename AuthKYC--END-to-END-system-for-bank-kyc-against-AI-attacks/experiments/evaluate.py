@@ -72,6 +72,7 @@ def main():
     parser.add_argument('--data-dir', type=str, required=True)
     parser.add_argument('--type', type=str, choices=['frame', 'video'], required=True)
     parser.add_argument('--metadata', type=str, default=None)
+    parser.add_argument('--output-dir', type=str, default=None, help='Output directory for results')
     args = parser.parse_args()
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -118,8 +119,10 @@ def main():
     print(cm)
 
     # Save outputs
-    os.makedirs('experiment_outputs/results', exist_ok=True)
-    result_prefix = f'experiment_outputs/results/{args.model}_eval'
+    output_dir = args.output_dir or os.environ.get('AUTHKYC_OUTPUT') or 'experiment_outputs'
+    results_dir = os.path.join(output_dir, 'results')
+    os.makedirs(results_dir, exist_ok=True)
+    result_prefix = os.path.join(results_dir, f'{args.model}_eval')
 
     # Save ROC Curve
     fpr, tpr, _ = roc_curve(all_labels, all_scores)

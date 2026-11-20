@@ -45,18 +45,21 @@ echo "  $(date)"
 echo "════════════════════════════════════════════════════════════"
 
 # ── 0. Environment Setup ─────────────────────────────────────────────────────
-PROJECT_DIR="/workspace/AuthKYC-Completed_Track/AuthKYC--END-to-END-system-for-bank-kyc-against-AI-attacks"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 DATASET_ROOT="/workspace/datasets"
 OUTPUT_ROOT="/workspace/experiment_outputs"
 
 export PYTHONPATH="$PROJECT_DIR:$PROJECT_DIR/experiments:$PROJECT_DIR/modules:$PROJECT_DIR/data"
 export AUTHKYC_DATA="$DATASET_ROOT"
+export AUTHKYC_DATA_ROOT="$DATASET_ROOT"
 export AUTHKYC_OUTPUT="$OUTPUT_ROOT"
 export AUTHKYC_OUTPUT_ROOT="$OUTPUT_ROOT"
 
 mkdir -p "$OUTPUT_ROOT/checkpoints"
 mkdir -p "$OUTPUT_ROOT/results"
-mkdir -p "$OUTPUT_ROOT/frames"
+mkdir -p "$OUTPUT_ROOT/frames/val/real"
+mkdir -p "$OUTPUT_ROOT/frames/val/fake"
 mkdir -p "$OUTPUT_ROOT/processed_tensors/train/real"
 mkdir -p "$OUTPUT_ROOT/processed_tensors/train/fake"
 mkdir -p "$OUTPUT_ROOT/processed_tensors/val/real"
@@ -95,7 +98,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 log "[Step 2/9] Installing dependencies..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-pip install -q gdown kaggle facenet-pytorch scikit-learn matplotlib tqdm torchvision opencv-python-headless 2>/dev/null || true
+pip install -q gdown kaggle facenet-pytorch scikit-learn matplotlib tqdm torchvision opencv-python-headless timm 2>/dev/null || true
 success "Dependencies installed."
 
 # ── 3. Download Previous Checkpoints from GDrive ─────────────────────────────
@@ -149,7 +152,8 @@ else
             find /workspace/gdrive_restore -name "*.csv" -exec cp {} "$OUTPUT_ROOT/" \; 2>/dev/null || true
 
             rm -rf /workspace/gdrive_restore
-            success "Previous checkpoints restored."
+            rm -f /workspace/authkyc_checkpoints_and_results.zip
+            success "Previous checkpoints restored and zip cleaned up."
         fi
     fi
 fi
@@ -246,26 +250,23 @@ fi
 # ── 6. Extract Face Frames (for XceptionNet & EfficientNet 2D baselines) ─────
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-log "[Step 6/9] Extracting face frames for 2D baselines..."
+log "[Step 6/9] Extracting validation face frames for 2D baselines..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-FRAME_REAL_COUNT=$(find "$OUTPUT_ROOT/frames/train/real" -name "*.pt" 2>/dev/null | wc -l)
-FRAME_FAKE_COUNT=$(find "$OUTPUT_ROOT/frames/train/fake" -name "*.pt" 2>/dev/null | wc -l)
+VAL_FRAME_REAL_COUNT=$(find "$OUTPUT_ROOT/frames/val/real" -name "*.pt" 2>/dev/null | wc -l)
+VAL_FRAME_FAKE_COUNT=$(find "$OUTPUT_ROOT/frames/val/fake" -name "*.pt" 2>/dev/null | wc -l)
 
-if [ "$FRAME_REAL_COUNT" -gt 100 ] && [ "$FRAME_FAKE_COUNT" -gt 100 ]; then
-    success "Face frames already extracted ($FRAME_REAL_COUNT real, $FRAME_FAKE_COUNT fake). Skipping."
+if [ "$VAL_FRAME_REAL_COUNT" -gt 100 ] && [ "$VAL_FRAME_FAKE_COUNT" -gt 100 ]; then
+    success "Validation face frames already extracted ($VAL_FRAME_REAL_COUNT real, $VAL_FRAME_FAKE_COUNT fake). Skipping."
 else
-    # Only needed if baseline checkpoints are missing
-    if [ -f "$OUTPUT_ROOT/checkpoints/best_xception.pth" ] && [ -f "$OUTPUT_ROOT/checkpoints/best_efficientnet.pth" ]; then
-        warn "Baseline checkpoints exist but no frames. Frames only needed for eval."
-        log "Running frame extraction..."
-    fi
+    log "Extracting validation frames for 2D baselines (takes ~20 min)..."
     python3 experiments/data/extract_frames.py \
         --data-root "$DATASET_ROOT" \
         --output-root "$OUTPUT_ROOT" \
         --frames-per-video 32 \
-        --image-size 299
-    success "Frame extraction complete."
+        --image-size 299 \
+        --val-only
+    success "Validation frame extraction complete."
 fi
 
 # ── 7. Train FTCA with Fixed Phase 2 Recipe ──────────────────────────────────
@@ -282,23 +283,37 @@ log "  Patience:     7"
 log "  Epochs:       25"
 echo ""
 
-# Ensure processed_tensors are in $OUTPUT_ROOT/processed_tensors
-for candidate_dir in "training_output/processed_tensors" "/workspace/training_output/processed_tensors" "$PROJECT_DIR/training_output/processed_tensors"; do
-    if [ -d "$candidate_dir/train/real" ] && [ "$(ls -A "$candidate_dir/train/real" 2>/dev/null)" ]; then
-        log "Found extracted tensors in $candidate_dir! Syncing to $OUTPUT_ROOT/processed_tensors/..."
-        mkdir -p "$OUTPUT_ROOT/processed_tensors"
-        cp -rn "$candidate_dir"/* "$OUTPUT_ROOT/processed_tensors/" 2>/dev/null || true
-    fi
-done
-
+# Verify tensors in $OUTPUT_ROOT/processed_tensors
 TRAIN_TENSORS=$(find "$OUTPUT_ROOT/processed_tensors/train" -name "*.pt" 2>/dev/null | wc -l)
 VAL_TENSORS=$(find "$OUTPUT_ROOT/processed_tensors/val" -name "*.pt" 2>/dev/null | wc -l)
+
+# Fallback: if historical tensors exist in legacy training_output, move (never copy) to prevent disk duplication
+if [ "$TRAIN_TENSORS" -lt 10 ]; then
+    for candidate_dir in "$PROJECT_DIR/training_output/processed_tensors" "/workspace/training_output/processed_tensors"; do
+        if [ -d "$candidate_dir/train/real" ] && [ "$(ls -A "$candidate_dir/train/real" 2>/dev/null)" ]; then
+            log "Relocating historical tensors from $candidate_dir to $OUTPUT_ROOT/processed_tensors/..."
+            mkdir -p "$OUTPUT_ROOT/processed_tensors"
+            mv "$candidate_dir"/* "$OUTPUT_ROOT/processed_tensors/" 2>/dev/null || true
+            rm -rf "$candidate_dir"
+        fi
+    done
+    TRAIN_TENSORS=$(find "$OUTPUT_ROOT/processed_tensors/train" -name "*.pt" 2>/dev/null | wc -l)
+    VAL_TENSORS=$(find "$OUTPUT_ROOT/processed_tensors/val" -name "*.pt" 2>/dev/null | wc -l)
+fi
+
 log "Tensor inventory: $TRAIN_TENSORS train tensors, $VAL_TENSORS val tensors"
 
-# Always retrain FTCA fresh with the fixed recipe
+if [ "$TRAIN_TENSORS" -lt 10 ]; then
+    error "Insufficient training tensors ($TRAIN_TENSORS) in $OUTPUT_ROOT/processed_tensors/train!"
+    error "Step 5 sequence extraction did not complete. Aborting to prevent invalid training."
+    exit 1
+fi
+
+# Retrain FTCA fresh with the fixed recipe
 python3 experiments/train_video_model.py \
     --model ftca_full \
     --data-dir "$OUTPUT_ROOT/processed_tensors" \
+    --output-dir "$OUTPUT_ROOT" \
     --epochs 25 \
     --batch-size 8 \
     --lr 3e-4 \
@@ -320,6 +335,7 @@ if [ -f "$OUTPUT_ROOT/checkpoints/best_xception.pth" ]; then
         --checkpoint "$OUTPUT_ROOT/checkpoints/best_xception.pth" \
         --model xception \
         --data-dir "$OUTPUT_ROOT/frames/val" \
+        --output-dir "$OUTPUT_ROOT" \
         --type frame
     success "XceptionNet evaluation done."
 else
@@ -333,6 +349,7 @@ if [ -f "$OUTPUT_ROOT/checkpoints/best_efficientnet.pth" ]; then
         --checkpoint "$OUTPUT_ROOT/checkpoints/best_efficientnet.pth" \
         --model efficientnet \
         --data-dir "$OUTPUT_ROOT/frames/val" \
+        --output-dir "$OUTPUT_ROOT" \
         --type frame
     success "EfficientNet-B4 evaluation done."
 else
@@ -346,6 +363,7 @@ if [ -f "$OUTPUT_ROOT/checkpoints/best_r3d18_vanilla.pth" ]; then
         --checkpoint "$OUTPUT_ROOT/checkpoints/best_r3d18_vanilla.pth" \
         --model r3d18_vanilla \
         --data-dir "$OUTPUT_ROOT/processed_tensors/val" \
+        --output-dir "$OUTPUT_ROOT" \
         --type video
     success "R3D-18 Vanilla evaluation done."
 else
@@ -359,6 +377,7 @@ if [ -f "$OUTPUT_ROOT/checkpoints/best_r3d18_freq_concat.pth" ]; then
         --checkpoint "$OUTPUT_ROOT/checkpoints/best_r3d18_freq_concat.pth" \
         --model r3d18_freq_concat \
         --data-dir "$OUTPUT_ROOT/processed_tensors/val" \
+        --output-dir "$OUTPUT_ROOT" \
         --type video
     success "R3D-18 + Freq Concat evaluation done."
 else
@@ -372,20 +391,12 @@ if [ -f "$OUTPUT_ROOT/checkpoints/best_ftca_full.pth" ]; then
         --checkpoint "$OUTPUT_ROOT/checkpoints/best_ftca_full.pth" \
         --model ftca_full \
         --data-dir "$OUTPUT_ROOT/processed_tensors/val" \
+        --output-dir "$OUTPUT_ROOT" \
         --type video
     success "FTCA evaluation done."
 else
-    # Fallback: check the old training_outputs location
-    if [ -f "$PROJECT_DIR/training_outputs/checkpoints/best_ftca_phase2.pth" ]; then
-        warn "Using fallback: training_outputs/checkpoints/best_ftca_phase2.pth"
-        python3 experiments/evaluate.py \
-            --checkpoint "$PROJECT_DIR/training_outputs/checkpoints/best_ftca_phase2.pth" \
-            --model ftca_full \
-            --data-dir "$OUTPUT_ROOT/processed_tensors/val" \
-            --type video
-    else
-        error "No FTCA checkpoint found!"
-    fi
+    error "best_ftca_full.pth not found in $OUTPUT_ROOT/checkpoints!"
+    exit 1
 fi
 
 # ── 9. Generate Paper Tables & Package Results ────────────────────────────────
@@ -394,7 +405,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 log "[Step 9/9] Generating publication tables & packaging results..."
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
-python3 experiments/generate_paper_tables.py
+python3 experiments/generate_paper_tables.py --results-dir "$OUTPUT_ROOT/results"
 
 # Package everything (excluding massive .pt tensor files)
 cd /workspace
@@ -402,9 +413,8 @@ zip -r authkyc_final_results.zip \
     experiment_outputs/checkpoints \
     experiment_outputs/results \
     experiment_outputs/*.csv \
-    AuthKYC-Completed_Track/AuthKYC--END-to-END-system-for-bank-kyc-against-AI-attacks/experiment_outputs/checkpoints \
-    AuthKYC-Completed_Track/AuthKYC--END-to-END-system-for-bank-kyc-against-AI-attacks/experiment_outputs/results \
-    AuthKYC-Completed_Track/AuthKYC--END-to-END-system-for-bank-kyc-against-AI-attacks/experiment_outputs/*.csv \
+    experiment_outputs/*.md \
+    experiment_outputs/*.tex \
     -x "*.pt" "*/processed_tensors/*" "*/frames/*" 2>/dev/null || true
 
 success "Results packaged into /workspace/authkyc_final_results.zip"

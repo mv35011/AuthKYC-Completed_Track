@@ -46,7 +46,7 @@ class DeepfakeDataExtractor:
         return frames
 
     def process_video(self, video_path, output_dir):
-        video_name = os.path.basename(video_path).split('.')[0]
+        video_name = os.path.splitext(os.path.basename(video_path))[0]
         output_path = os.path.join(output_dir, f"{video_name}.pt")
 
         if os.path.exists(output_path): return
@@ -197,11 +197,21 @@ if __name__ == "__main__":
     print(f"Train: {len(train_real)} real + {len(train_fake)} fake")
     print(f"Val:   {len(val_real)} real + {len(val_fake)} fake")
 
+    output_root = args.output_root if args.output_root else CFG.OUTPUT_ROOT
+    processed_tensors_dir = os.path.join(output_root, "processed_tensors")
+
     # --- 5. EXECUTE EXTRACTION ---
-    train_real_dir = os.path.join(CFG.PROCESSED_TENSORS, "train/real")
-    train_fake_dir = os.path.join(CFG.PROCESSED_TENSORS, "train/fake")
-    val_real_dir = os.path.join(CFG.PROCESSED_TENSORS, "val/real")
-    val_fake_dir = os.path.join(CFG.PROCESSED_TENSORS, "val/fake")
+    train_real_dir = os.path.join(processed_tensors_dir, "train", "real")
+    train_fake_dir = os.path.join(processed_tensors_dir, "train", "fake")
+    val_real_dir = os.path.join(processed_tensors_dir, "val", "real")
+    val_fake_dir = os.path.join(processed_tensors_dir, "val", "fake")
+
+    os.makedirs(train_real_dir, exist_ok=True)
+    os.makedirs(train_fake_dir, exist_ok=True)
+    os.makedirs(val_real_dir, exist_ok=True)
+    os.makedirs(val_fake_dir, exist_ok=True)
+
+    print(f"\nTarget output directory: {processed_tensors_dir}")
 
     print("\n--- Extracting Training Data (REAL) ---")
     for path in tqdm(train_real, desc="Train/Real"):
@@ -222,7 +232,7 @@ if __name__ == "__main__":
     # Print final counts
     for split in ["train", "val"]:
         for label in ["real", "fake"]:
-            d = os.path.join(CFG.PROCESSED_TENSORS, split, label)
+            d = os.path.join(processed_tensors_dir, split, label)
             count = len([f for f in os.listdir(d) if f.endswith('.pt')]) if os.path.exists(d) else 0
             print(f"  {split}/{label}: {count} tensor files")
 
