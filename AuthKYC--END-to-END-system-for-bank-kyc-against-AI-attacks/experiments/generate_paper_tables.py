@@ -31,10 +31,16 @@ def main():
 
     data = {}
     for f in json_files:
-        with open(f, 'r') as fp:
-            res = json.load(fp)
-            model_name = res.get("model", os.path.basename(f).replace("_eval.json", ""))
-            data[model_name] = res["metrics"]
+        try:
+            with open(f, 'r') as fp:
+                res = json.load(fp)
+                if isinstance(res, dict) and "metrics" in res:
+                    model_name = res.get("model", os.path.basename(f).replace("_eval.json", ""))
+                    data[model_name] = res["metrics"]
+        except Exception as e:
+            print(f"Skipping {f}: {e}")
+
+    print(f"\nFound {len(data)} evaluated models in {results_dir}: {list(data.keys())}")
 
     # Param counts
     params = {
