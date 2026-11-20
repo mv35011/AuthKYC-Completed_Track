@@ -314,8 +314,8 @@ python3 experiments/train_video_model.py \
     --model ftca_full \
     --data-dir "$OUTPUT_ROOT/processed_tensors" \
     --output-dir "$OUTPUT_ROOT" \
-    --epochs 25 \
-    --batch-size 8 \
+    --epochs 50 \
+    --batch-size 16 \
     --lr 3e-4 \
     --weight-decay 1e-3 \
     --patience 7
