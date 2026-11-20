@@ -20,6 +20,31 @@ from data.video_dataset import VideoSequenceDataset
 from torch.utils.data import DataLoader
 
 
+def get_grad_scaler(device_type='cuda'):
+    """Return GradScaler compatible across PyTorch versions (2.0 to 2.5+)."""
+    if hasattr(torch, 'amp') and hasattr(torch.amp, 'GradScaler'):
+        try:
+            return torch.amp.GradScaler(device_type)
+        except Exception:
+            pass
+    if hasattr(torch, 'cuda') and hasattr(torch.cuda, 'amp') and hasattr(torch.cuda.amp, 'GradScaler'):
+        return torch.cuda.amp.GradScaler()
+    return None
+
+
+def get_autocast(device_type='cuda'):
+    """Return autocast context manager compatible across PyTorch versions."""
+    if hasattr(torch, 'amp') and hasattr(torch.amp, 'autocast'):
+        try:
+            return torch.amp.autocast(device_type=device_type)
+        except Exception:
+            pass
+    if hasattr(torch, 'cuda') and hasattr(torch.cuda, 'amp') and hasattr(torch.cuda.amp, 'autocast'):
+        return torch.cuda.amp.autocast()
+    from contextlib import nullcontext
+    return nullcontext()
+
+
 def smooth_labels(labels, smoothing=0.05):
     """Label smoothing: 1.0 -> 0.95, 0.0 -> 0.05"""
     return labels * (1.0 - smoothing) + 0.5 * smoothing
@@ -40,7 +65,7 @@ def train_one_epoch(model, loader, criterion, optimizer, device, scaler=None, gr
         optimizer.zero_grad(set_to_none=True)
 
         if scaler is not None:
-            with torch.amp.autocast('cuda'):
+            with get_autocast('cuda'):
                 logits = model(inputs).squeeze(1)  # [B]
                 loss = criterion(logits, smooth)
             scaler.scale(loss).backward()
@@ -74,7 +99,7 @@ def validate(model, loader, criterion, device, scaler=None):
             labels = labels.float().to(device, non_blocking=True)
 
             if scaler is not None:
-                with torch.amp.autocast('cuda'):
+                with get_autocast('cuda'):
                     logits = model(inputs).squeeze(1)
                     loss = criterion(logits, labels)  # No smoothing for val
             else:
@@ -152,9 +177,11 @@ def main():
 
     # AMP (Mixed Precision) — 2x faster on GPU
     use_amp = (device.type == 'cuda' and not args.no_amp)
-    scaler = torch.amp.GradScaler('cuda') if use_amp else None
-    if use_amp:
+    scaler = get_grad_scaler('cuda') if use_amp else None
+    if scaler is not None:
         print("[AMP] Mixed precision training ENABLED (FP16)")
+    elif use_amp:
+        print("[AMP] GradScaler not available on this PyTorch build — falling back to FP32")
 
     start_epoch = 0
     best_val_loss = float('inf')

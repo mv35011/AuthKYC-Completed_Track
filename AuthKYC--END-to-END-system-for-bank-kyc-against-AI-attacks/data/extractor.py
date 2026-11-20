@@ -185,6 +185,12 @@ if __name__ == "__main__":
     print(f"\nTotal Real Videos Selected: {len(real_videos)}")
     print(f"Total Fake Videos Selected: {len(fake_videos)}")
 
+    if len(real_videos) < 1000:
+        raise RuntimeError(
+            f"ERROR: Insufficient real videos found ({len(real_videos)}). Expected at least 1500 to match fakes.\n"
+            f"Please check that both FaceForensics++ and Celeb-DF v2 are fully downloaded and extracted in {CFG.DATASET_ROOT}."
+        )
+
     # --- 4. STRICT TRAIN/VAL SPLIT (80/20) ---
     split_idx_real = int(len(real_videos) * CFG.TRAIN_SPLIT)
     split_idx_fake = int(len(fake_videos) * CFG.TRAIN_SPLIT)

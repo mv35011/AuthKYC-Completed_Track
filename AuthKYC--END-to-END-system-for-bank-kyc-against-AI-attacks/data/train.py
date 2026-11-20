@@ -32,6 +32,31 @@ from dataset import DeepfakeVideoDataset
 from server_config import CFG
 
 
+def get_grad_scaler(device_type='cuda'):
+    """Return GradScaler compatible across PyTorch versions (2.0 to 2.5+)."""
+    if hasattr(torch, 'amp') and hasattr(torch.amp, 'GradScaler'):
+        try:
+            return torch.amp.GradScaler(device_type)
+        except Exception:
+            pass
+    if hasattr(torch, 'cuda') and hasattr(torch.cuda, 'amp') and hasattr(torch.cuda.amp, 'GradScaler'):
+        return torch.cuda.amp.GradScaler()
+    return None
+
+
+def get_autocast(device_type='cuda'):
+    """Return autocast context manager compatible across PyTorch versions."""
+    if hasattr(torch, 'amp') and hasattr(torch.amp, 'autocast'):
+        try:
+            return torch.amp.autocast(device_type=device_type)
+        except Exception:
+            pass
+    if hasattr(torch, 'cuda') and hasattr(torch.cuda, 'amp') and hasattr(torch.cuda.amp, 'autocast'):
+        return torch.cuda.amp.autocast()
+    from contextlib import nullcontext
+    return nullcontext()
+
+
 class EarlyStopping:
     """Stop training if val loss doesn't improve for `patience` epochs."""
     def __init__(self, patience=7, min_delta=1e-4):
@@ -113,7 +138,7 @@ def train_model():
         optimizer, T_0=10, T_mult=2, eta_min=1e-6
     )
 
-    scaler = torch.amp.GradScaler('cuda') if device.type == 'cuda' else None
+    scaler = get_grad_scaler('cuda') if device.type == 'cuda' else None
 
     # Early stopping
     early_stopper = EarlyStopping(patience=CFG.PHASE2_EARLY_STOP_PATIENCE)
@@ -147,7 +172,7 @@ def train_model():
             optimizer.zero_grad(set_to_none=True)
 
             if scaler is not None:
-                with torch.amp.autocast('cuda'):
+                with get_autocast('cuda'):
                     logits = model(inputs)
                     loss = criterion(logits, smooth)
 
@@ -184,7 +209,7 @@ def train_model():
                 labels = labels.to(device, non_blocking=True)
 
                 if scaler is not None:
-                    with torch.amp.autocast('cuda'):
+                    with get_autocast('cuda'):
                         logits = model(inputs)
                         loss = criterion(logits, labels)  # No smoothing for validation
                 else:
