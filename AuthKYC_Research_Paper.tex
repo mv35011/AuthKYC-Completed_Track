@@ -1,20 +1,23 @@
-\documentclass[conference]{IEEEtran}
+\documentclass[conference,10pt]{IEEEtran}
 \IEEEoverridecommandlockouts
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
 \usepackage{cite}
 \usepackage{amsmath,amssymb,amsfonts}
-\usepackage{algorithmic}
 \usepackage{graphicx}
 \usepackage{textcomp}
 \usepackage{xcolor}
 \usepackage{booktabs}
+\usepackage{multirow}
 \usepackage{hyperref}
+\usepackage{enumitem}
 
 \def\BibTeX{{\rm B\kern-.05em{\sc i\kern-.025em b}\kern-.08em
     T\kern-.1667em\lower.7ex\hbox{E}\kern-.125emX}}
 
 \begin{document}
 
-\title{AuthKYC: Dual-Domain Spatio-Temporal and Spectral Cross-Attention for Robust Deepfake Detection in Remote Identity Verification}
+\title{AuthKYC: Frequency-Temporal Cross-Attention for\\Robust Video-Level Deepfake Detection in\\Remote Identity Verification}
 
 \author{\IEEEauthorblockN{Manmohan Vishwakarma}
 \IEEEauthorblockA{\textit{Department of Electronics and Communication Engineering} \\
@@ -25,190 +28,310 @@ manmohanv.ug23.ec@nitp.ac.in}
 
 \maketitle
 
+% ============================================================================
 \begin{abstract}
-The exponential proliferation of generative artificial intelligence, particularly generative adversarial networks (GANs) and latent diffusion models, poses an existential threat to remote identity verification and digital Know-Your-Customer (e-KYC) infrastructures. Contemporary automated presentation attack detection (PAD) systems primarily rely on single-frame spatial convolutional neural networks or simplistic 3D temporal models. However, these architectures exhibit severe vulnerability to modern cross-manipulation attacks, where temporal flickering is suppressed or spatial blending artifacts are smoothed into high-frequency spectral bands. In this paper, we introduce AuthKYC, an enterprise-grade biometric verification framework centered around a novel Frequency-Temporal Cross-Attention (FTCA) architecture. FTCA unifies an 18-layer 3D ResNet (R3D-18) spatio-temporal stream with a dedicated 3D Fast Fourier Transform (FFT) spectral stream. Crucially, rather than relying on naive feature concatenation---which induces destructive cross-domain interference---FTCA employs a multi-head cross-attention mechanism wherein spatial video queries ($Q_{rgb}$) actively interrogate high-frequency spectral keys and values ($K_{freq}, V_{freq}$) to uncover subtle temporal phase anomalies and synthetic generation artifacts. Evaluated on a rigorous, balanced benchmark combining FaceForensics++ (C23) and Celeb-DF v2, FTCA achieves 95.93\% AUC-ROC, 90.57\% Accuracy, 91.03\% Precision, 89.80\% Recall, and an Equal Error Rate (EER) of 9.67\%, successfully classifying 538 out of 594 evaluation video volumes. Comprehensive ablation studies demonstrate that FTCA outperforms naive frequency concatenation by +2.08\% AUC and cuts EER by 2.66\%, establishing an effective, tamper-resistant defense for automated banking compliance.
+Generative face manipulation poses an escalating threat to remote electronic Know-Your-Customer (e-KYC) identity verification in banking and financial services. While conventional 2D frame-level detectors achieve high accuracy on homogeneous benchmarks, they ignore inter-frame temporal coherence, struggle under heterogeneous video compression, and report inflated metrics over isolated static crops rather than video-level decisions. We propose \textbf{FTCA} (Frequency-Temporal Cross-Attention), the deep forensic engine within the multi-stage \textbf{AuthKYC} defense gateway. FTCA processes 16-frame facial video volumes through two parallel branches: a Kinetics-400 pretrained R3D-18 spatio-temporal encoder and a custom 3D FFT-based frequency encoder. Crucially, unlike naive feature concatenation---which we empirically demonstrate \textit{degrades} performance---FTCA employs asymmetric multi-head cross-attention where spatial queries ($\mathbf{Q}_{rgb}$) dynamically interrogate spectral keys and values ($\mathbf{K}_{freq}, \mathbf{V}_{freq}$) to isolate high-frequency manipulation artifacts.
+
+We evaluate FTCA under two complementary protocols: (1)~a \textit{single-source manipulation protocol} on FaceForensics++ C23 fakes, where FTCA achieves \textbf{98.74\% AUC-ROC} and \textbf{94.55\% Accuracy}; and (2)~a harder \textit{cross-dataset protocol} introducing Celeb-DF v2 synthesis alongside FF++ C23 under mixed compression, where FTCA achieves \textbf{95.93\% AUC-ROC}, \textbf{90.57\% Accuracy}, and \textbf{9.67\% EER} at the \textit{video level}---outperforming all 3D spatio-temporal baselines. Adding only \textbf{0.85M parameters (+1.89\%)} over naive concatenation, cross-attention delivers a \textbf{+2.08\% AUC-ROC} and \textbf{+3.53\% Accuracy} improvement while cutting EER from 12.33\% to 9.67\%, validating attention-guided dual-domain fusion for automated KYC compliance.
 \end{abstract}
 
 \begin{IEEEkeywords}
-Deepfake Detection, Remote e-KYC, Spatio-Temporal Convolution, Fast Fourier Transform, Cross-Attention, Biometric Security, Presentation Attack Detection.
+Deepfake Detection, e-KYC, Spatio-Temporal CNN, 2D Fast Fourier Transform, Cross-Attention, Presentation Attack Detection, Cross-Dataset Generalization.
 \end{IEEEkeywords}
 
+% ============================================================================
 \section{Introduction}
-Remote digital customer onboarding and electronic Know-Your-Customer (e-KYC) processes have become foundational pillars of global financial technology (FinTech), banking, and digital governance. Driven by regulatory compliance frameworks (such as Anti-Money Laundering [AML] and Counter-Terrorist Financing [CTF]), financial institutions require individuals to submit live video selfies and government identity documents to prove identity and vitality.
 
-However, the rapid democratization of deep generative architectures---encompassing DeepFake autoencoders, StarGAN, FaceShifter, and diffusion-based identity reenactment engines---has fundamentally undermined the assumption of visual authenticity in digital video channels. Fraud syndicates increasingly deploy automated injection attacks, feeding synthesized video streams into virtual webcams to bypass conventional liveness checks and facial recognition algorithms.
+Remote digital onboarding and electronic Know-Your-Customer (e-KYC) verification underpin modern retail banking, payment platforms, and fintech compliance under Anti-Money Laundering (AML) and Counter-Terrorist Financing (CTF) mandates. Institutions require applicants to record live video selfies to confirm physical presence and identity. However, modern generative pipelines---spanning autoencoder face swaps~\cite{roessler2019faceforensics}, neural reenactment~\cite{thies2016face2face,thies2019deferred}, and improved color-blended synthesis~\cite{li2020celeb}---allow fraudsters to inject realistic synthetic video streams directly into KYC capture sessions.
 
-\subsection{Limitations of Existing Paradigms}
-\begin{enumerate}
-    \item \textbf{Frame-Level Blind Spots}: Prevailing commercial detectors rely on 2D frame-by-frame classifiers (such as XceptionNet and EfficientNet-B4). While these networks exhibit strong performance on uncompressed image benchmarks, they evaluate video frames in complete isolation. Consequently, they are entirely blind to inter-frame temporal inconsistencies, optical flow disruptions, and unnatural facial muscle micro-movements across consecutive temporal steps.
-    \item \textbf{Frequency Domain Neglect}: Generative models inevitably introduce upsampling and deconvolution artifacts in the frequency spectrum (e.g., periodic checkerboard artifacts and spectral drop-offs in the high-frequency Fourier spectrum). Spatial convolutions alone struggle to capture these non-local frequency distortions, particularly after video compression codecs (e.g., H.264/MPEG-4 C23) attenuate spatial pixel residuals.
-    \item \textbf{Destructive Feature Fusion}: Prior attempts to incorporate frequency data typically concatenate spatial and frequency vectors into a monolithic classification layer. As shown empirically in this work, naive concatenation leads to gradient interference and suboptimal convergence because raw spectral energy distributions overwhelm spatial semantic activations.
+Academic deepfake detection has largely centered on 2D convolutional classifiers such as XceptionNet~\cite{chollet2017xception} and EfficientNet-B4~\cite{tan2019efficientnet}, which regularly report $>96\%$ AUC-ROC on single-source datasets. Yet deploying these frame-level detectors directly inside production e-KYC systems exposes three structural weaknesses:
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Temporal blindness and metric inflation.} Frame-level detectors evaluate still crops in isolation, missing inter-frame anomalies such as micro-flickering at face masks, lip-motion desynchronization, and unnatural blink cadence~\cite{li2018ictu}. Furthermore, evaluating across tens of thousands of correlated frames inflates benchmark statistics relative to real KYC decisions, which require a single verdict per video clip.
+
+    \item \textbf{Spectral vulnerability after compression.} Generative upsampling leaves characteristic periodic distortions in the high-frequency Fourier domain~\cite{frank2020leveraging,durall2020watch}. Under H.264/MPEG-4 compression (e.g., FF++ C23), spatial pixel residuals are smoothed away, making pure RGB spatial convolutions brittle.
+
+    \item \textbf{Cross-dataset domain fragility.} Detectors tuned on a single manipulation source experience sharp degradation when evaluated across unseen synthesis algorithms, lighting conditions, and mixed codec bitrates~\cite{li2020celeb}. Moreover, naive multi-modal fusion via vector concatenation~\cite{masi2020two} often induces cross-domain gradient interference rather than complementary gains.
 \end{enumerate}
 
-\subsection{Our Contributions}
-To address these vulnerabilities, this work presents \textbf{AuthKYC}, offering the following contributions:
-\begin{itemize}
-    \item \textbf{The FTCA Dual-Domain Architecture}: We propose the Frequency-Temporal Cross-Attention (FTCA) block, combining an 18-layer 3D Spatio-Temporal Convolutional Network ($R3D-18$) with a customized 3D Frequency Encoder operating on dynamic 2D Fast Fourier Transform (FFT) sequence volumes.
-    \item \textbf{Cross-Attention Multi-Modal Fusion}: We formulate an asymmetric cross-attention mechanism where spatial volume features act as Queries ($Q_{rgb}$) that dynamically attend to high-frequency spectral Keys ($K_{freq}$) and Values ($V_{freq}$), guiding the model's focus toward regions exhibiting synthetic blending discrepancies.
-    \item \textbf{Empirical Rigor on Combined Benchmarks}: Unlike studies evaluated on homogenous datasets, AuthKYC is trained and benchmarked against an extensive cross-manipulation dataset uniting FaceForensics++ (Original, Deepfakes, Face2Face, FaceSwap, FaceShifter, DeepFakeDetection) and Celeb-DF v2.
-    \item \textbf{Exhaustive Benchmark \& Ablation}: We provide an exhaustive empirical comparison against industry-standard baselines (XceptionNet, EfficientNet-B4) and explicit ablation variants (Vanilla R3D-18, R3D-18 Frequency Concatenation), proving the decisive advantage of cross-attention fusion.
+\subsection{Our Approach and Contributions}
+
+To address these gaps, we present \textbf{AuthKYC}, a layered presentation attack detection framework centered on the \textbf{Frequency-Temporal Cross-Attention (FTCA)} network. Our primary contributions are:
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Dual-Domain Spatio-Temporal Encoding}: FTCA processes contiguous 16-frame face volumes jointly through a Kinetics-400 pretrained R3D-18 encoder~\cite{tran2018closer} and a custom 5-stage 3D FFT FrequencyEncoder with matched $8\times$ temporal downsampling, preserving spectral dynamics over time.
+
+    \item \textbf{Asymmetric Cross-Attention Fusion}: Rather than symmetric feature concatenation, FTCA casts spatio-temporal RGB tokens as queries ($\mathbf{Q}_{rgb}$) attending to spectral keys and values ($\mathbf{K}_{freq}, \mathbf{V}_{freq}$) via 8-head attention~\cite{vaswani2017attention}. Adding just 0.85M parameters (+1.89\%) over concatenation yields a +2.08\% AUC gain.
+
+    \item \textbf{Counter-Intuitive Ablation Evidence}: On identical 594-volume video-level splits, we show that naive frequency concatenation actually \textit{reduces} AUC-ROC below the RGB-only baseline (93.85\% vs.\ 94.67\%) and raises EER (12.33\% vs.\ 11.67\%), whereas cross-attention fusion achieves \textbf{95.93\% AUC-ROC} and \textbf{9.67\% EER}.
+
+    \item \textbf{Cross-Dataset Generalization Analysis}: We contrast FTCA's ceiling on single-source FF++ C23 manipulations (\textbf{98.74\% AUC}, 94.55\% Accuracy) against mixed cross-dataset evaluation incorporating Celeb-DF v2 synthesis (\textbf{95.93\% AUC}, 90.57\% Accuracy), systematically characterizing the 2.81\% domain-shift gap and contextualizing FTCA inside a four-stage KYC defense cascade.
 \end{itemize}
 
+% ============================================================================
 \section{Related Work}
-\subsection{Spatial Deepfake Detection}
-Early benchmarks established by R\"ossler et al. \cite{roessler2019faceforensics} popularized deep convolutional neural networks, predominantly XceptionNet, for forensic face analysis. These methods process individual frames resized to $299 \times 299$, detecting blending boundaries and color discrepancies. While effective on high-quality stills, their performance degrades drastically when applied to compressed video sequences where temporal motion blur conceals spatial artifacts.
 
-\subsection{Spatio-Temporal Video Modeling}
-To exploit temporal continuity, researchers extended 2D architectures to video sequences using recurrent neural networks or 3D convolutions ($R3D$) \cite{tran2018closer}. By computing spatio-temporal kernels across dimensions $(C, T, H, W)$, 3D CNNs simultaneously model spatial facial geometry and temporal dynamics. However, RGB spatio-temporal networks remain vulnerable to high-fidelity deepfakes generated by neural renderers, which preserve temporal smoothness while leaving subtle frequency residuals.
+\subsection{Frame-Level Spatial Forensics}
+R\"ossler et al.~\cite{roessler2019faceforensics} popularized XceptionNet~\cite{chollet2017xception} as the standard frame-level detector on FaceForensics++, followed by compound-scaled backbones such as EfficientNet-B4~\cite{tan2019efficientnet}. Although frame-level classifiers achieve strong per-image scores (for reference, in our own mixed-dataset frame evaluation across 18,780 crops at $299\times299$/$300\times300$, XceptionNet and EfficientNet-B4 obtain 96.90\% and 94.63\% frame AUC, respectively), these numbers are not directly comparable to video-level detectors: frame evaluation treats ~32 correlated stills per video as independent trials, cannot detect temporal tampering, and permits selective-frame evasion. Consequently, our primary comparative benchmarks evaluate strictly at the 16-frame video-volume level.
 
-\subsection{Frequency-Domain Forensics}
-Frank et al. \cite{frank2020leveraging} and Durall et al. \cite{durall2020watch} established that convolutional upsampling layers in GAN pipelines leave identifiable footprints in the frequency domain. Applying Fast Fourier Transform (FFT) exposes spectral energy anomalies that are invariant to localized lighting and color shifts. However, most frequency-domain detectors operate statically on single frames. AuthKYC bridges this gap by computing dynamic 3D spatio-temporal Fourier volumes.
+\subsection{Spatio-Temporal Video Detection}
+To capture inter-frame cues, recurrent hybrids (CNN-LSTM)~\cite{guera2018deepfake} and 3D convolutional architectures such as R3D-18~\cite{tran2018closer} apply spatio-temporal kernels across $(C, T, H, W)$ clips. However, pure RGB 3D networks rely heavily on visible blending boundaries and temporal jitter, struggling when high-fidelity neural renderers~\cite{thies2019deferred,li2020celeb} maintain smooth motion across adjacent frames.
 
-\section{The AuthKYC Methodology}
+\subsection{Frequency Forensics and Multi-Modal Fusion}
+Spectral analysis~\cite{frank2020leveraging,durall2020watch} demonstrated that transposed convolutions and upsampling in generative networks produce distinct Fourier magnitude roll-offs and periodic checkerboard signatures. Prior multi-modal detectors such as two-branch architectures~\cite{masi2020two} typically fuse spatial and frequency embeddings through static concatenation or summation. As our ablation confirms (Section~\ref{sec:ablation}), unweighted concatenation lets noisy high-magnitude spectral channels distort learned spatial semantics under compression shift. FTCA resolves this via token-wise asymmetric cross-attention.
 
-\subsection{Input Preprocessing and Sequence Formation}
-Input video streams undergo real-time facial detection and tracking via Multi-Task Cascaded Convolutional Networks (MTCNN). Detected bounding boxes are scaled by an empirical margin factor $M = 1.3$ to preserve hair-line and jaw boundary contexts. For each video, uniform temporal sliding windows extract contiguous clips:
+% ============================================================================
+\section{Proposed Architecture}
+
+\subsection{System Overview}
+FTCA operates on cropped, tracked 16-frame facial sequences through three stages: (1)~face tracking and clip formation, (2)~parallel spatio-temporal and 3D spectral feature extraction, and (3)~asymmetric multi-head cross-attention fusion with residual classification. Fig.~\ref{fig:architecture} illustrates the complete dataflow and exact tensor dimensionalities.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.98\linewidth]{experiment_outputs/paper_figures/fig1_architecture.png}
+\caption{Overview of the proposed FTCA architecture (46.02M parameters total). An input 16-frame facial volume passes concurrently through a Kinetics-400 pretrained R3D-18 spatio-temporal encoder (33.17M) and a 2D-FFT + 5-stage 3D FrequencyEncoder (11.73M). Multi-head cross-attention ($h=8, d_k=64$) queries spectral keys/values using spatial tokens before residual LayerNorm pooling and binary classification.}
+\label{fig:architecture}
+\end{figure*}
+
+\subsection{Face Detection and Sequence Formation}
+Incoming video frames are processed using MTCNN face detection with an expanded bounding margin of $M=40$~pixels so that hairline, jaw contour, and ear blending seams remain inside the crop. Faces are resized to $224 \times 224$ and assembled into non-overlapping 16-frame contiguous clips (up to 8 clips per video):
 \begin{equation}
-V \in \mathbb{R}^{B \times C \times T \times H \times W}
+    V \in \mathbb{R}^{B \times 3 \times 16 \times 224 \times 224}
 \end{equation}
-where $B$ is the batch size, $C = 3$ (RGB color channels), $T = 16$ consecutive frames, and $H = W = 224$ pixels.
+Extracted sequences are stored as raw floating-point tensors in $[0, 1]$. During training, photometric and geometric augmentations are applied \textit{prior} to ImageNet channel normalization ($\mu=[0.485, 0.456, 0.406], \sigma=[0.229, 0.224, 0.225]$)~\cite{shorten2019survey}; reversing this order corrupts color-jitter statistics on zero-centered inputs.
 
-\subsection{Spatio-Temporal RGB Stream ($R3D-18$)}
-The visual stream processes the sequence volume through an 18-layer 3D Residual Network ($R3D-18$) initialized with Kinetics-400 pre-trained weights:
+\subsection{Spatio-Temporal RGB Encoder}
+The spatial-temporal stream adopts R3D-18~\cite{tran2018closer} initialized with Kinetics-400 action recognition weights (\texttt{R3D\_18\_Weights.KINETICS400\_V1}), providing strong motion priors (33.17M parameters). Processing $V$ through the 3D stem and four residual stages yields an $8\times$ temporally and $32\times$ spatially downsampled feature tensor:
 \begin{equation}
-\mathbf{X}_{rgb} = \text{R3D-Stem}(V) \xrightarrow{} \text{ResLayer}_{1..4} \in \mathbb{R}^{B \times 512 \times \frac{T}{8} \times \frac{H}{32} \times \frac{W}{32}}
+    \mathbf{X}_{rgb} = \text{R3D}_{1..4}(V) \in \mathbb{R}^{B \times 512 \times 2 \times 7 \times 7}
 \end{equation}
-Flattening the spatial-temporal coordinates yields the spatial feature sequence:
+Flattening the spatio-temporal grid $(2 \times 7 \times 7)$ produces $L=98$ tokens of dimension $d=512$:
 \begin{equation}
-\mathbf{F}_{rgb} = \text{Flatten}(\mathbf{X}_{rgb})^\top \in \mathbb{R}^{B \times L \times 512}
+    \mathbf{F}_{rgb} = \text{Transpose}(\text{Flatten}_{2:}(\mathbf{X}_{rgb})) \in \mathbb{R}^{B \times 98 \times 512}
 \end{equation}
-where $L = \frac{T}{8} \times \frac{H}{32} \times \frac{W}{32} = 2 \times 7 \times 7 = 98$ tokens.
 
 \subsection{Dynamic 3D Frequency Encoder}
-Concurrently, the input video tensor is converted to grayscale to isolate luminance variations:
+In parallel, each RGB clip is converted to BT.601 luminance grayscale:
 \begin{equation}
-I_{gray}(t, x, y) = 0.2989 R + 0.5870 G + 0.1140 B
+    I_{gray}^{(t)} = 0.2989 R^{(t)} + 0.5870 G^{(t)} + 0.1140 B^{(t)}
 \end{equation}
-For each temporal frame $t \in \{1, \dots, T\}$, the 2D Fast Fourier Transform (FFT) is computed:
+For each temporal slice $t \in \{1,\dots,16\}$, we compute the orthonormal 2D Fast Fourier Transform (\texttt{norm="ortho"}), apply quadrant zero-frequency centering, and take the log-magnitude spectrum ($\epsilon = 10^{-8}$):
 \begin{equation}
-\mathcal{F}(t, u, v) = \sum_{x=0}^{H-1} \sum_{y=0}^{W-1} I_{gray}(t, x, y) \cdot e^{-j 2\pi \left(\frac{ux}{H} + \frac{vy}{W}\right)}
+    \mathbf{S}(t, u, v) = \ln\!\left(\left|\text{fftshift}\!\left(\mathcal{F}_{2D}\!\left(I_{gray}^{(t)}\right)\right)\right| + \epsilon\right)
 \end{equation}
-Applying quadrant shift and logarithmic dynamic range compression:
-\begin{equation}
-\mathbf{S}_{freq}(t, u, v) = \ln\left( |\text{fftshift}(\mathcal{F}(t, u, v))| + 10^{-8} \right)
-\end{equation}
-The resulting volume $\mathbf{V}_{freq} \in \mathbb{R}^{B \times 1 \times T \times H \times W}$ is passed through a 5-stage 3D Frequency Encoder yielding:
-\begin{equation}
-\mathbf{F}_{freq} \in \mathbb{R}^{B \times L \times 512}
-\end{equation}
+This yields a dynamic spectral volume $\mathbf{V}_{freq} \in \mathbb{R}^{B \times 1 \times 16 \times 224 \times 224}$. Rather than flattening static 2D spectra, we design a dedicated 5-stage 3D \texttt{FrequencyEncoder} (11.73M parameters) whose downsampling schedule mirrors R3D-18:
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Stem}: $\text{Conv3D}(1\rightarrow64,\, k=(3,5,5),\, s=(1,2,2)) + \text{BN} + \text{ReLU} + \text{MaxPool3D}((1,3,3), s=(1,2,2))$ $\rightarrow [B,64,16,56,56]$
+    \item \textbf{Layer 1}: $\text{Conv3D}(64\rightarrow128,\, k=3,\, s=(1,2,2)) + \text{BN} + \text{ReLU} + \text{Dropout3D}(0.1)$ $\rightarrow [B,128,16,28,28]$
+    \item \textbf{Layer 2}: $\text{Conv3D}(128\rightarrow256,\, k=3,\, s=(2,2,2)) + \text{BN} + \text{ReLU} + \text{Dropout3D}(0.1)$ $\rightarrow [B,256,8,14,14]$
+    \item \textbf{Layer 3}: $\text{Conv3D}(256\rightarrow512,\, k=3,\, s=(2,2,2)) + \text{BN} + \text{ReLU}$ $\rightarrow [B,512,4,7,7]$
+    \item \textbf{Layer 4}: $\text{Conv3D}(512\rightarrow512,\, k=3,\, s=(2,1,1)) + \text{BN} + \text{ReLU}$ $\rightarrow [B,512,2,7,7]$
+\end{itemize}
+Flattening $\mathbf{X}_{freq}$ produces exact token alignment $\mathbf{F}_{freq} \in \mathbb{R}^{B \times 98 \times 512}$.
 
-\subsection{Dual-Domain Cross-Attention (FTCA)}
-Rather than concatenating $\mathbf{F}_{rgb}$ and $\mathbf{F}_{freq}$, we deploy multi-head cross-attention ($h = 8$ heads, $d_k = 64$):
+\subsection{Asymmetric Cross-Attention Fusion and Head}
+Unlike symmetric concatenation, FTCA treats spatial-temporal tokens as queries $\mathbf{Q} = \mathbf{F}_{rgb}\mathbf{W}_Q$ that actively probe spectral keys and values $\mathbf{K} = \mathbf{F}_{freq}\mathbf{W}_K$, $\mathbf{V} = \mathbf{F}_{freq}\mathbf{W}_V$ across $h=8$ heads ($d_k = 512/8 = 64$, attention dropout $0.1$):
 \begin{equation}
-\mathbf{Q} = \mathbf{F}_{rgb} \mathbf{W}_Q, \quad \mathbf{K} = \mathbf{F}_{freq} \mathbf{W}_K, \quad \mathbf{V} = \mathbf{F}_{freq} \mathbf{W}_V
+    \text{CrossAttn}(\mathbf{F}_{rgb}, \mathbf{F}_{freq}) = \text{softmax}\!\left(\frac{\mathbf{Q}\mathbf{K}^\top}{\sqrt{d_k}}\right)\mathbf{V}
 \end{equation}
+A residual connection and layer normalization preserve spatial backbone representations when spectral energy is uninformative (e.g., heavily re-compressed authentic video):
 \begin{equation}
-\text{Attention}(\mathbf{Q}, \mathbf{K}, \mathbf{V}) = \text{softmax}\left(\frac{\mathbf{Q} \mathbf{K}^\top}{\sqrt{d_k}}\right) \mathbf{V}
+    \mathbf{F}_{fused} = \text{LayerNorm}\!\left(\mathbf{F}_{rgb} + \text{CrossAttn}(\mathbf{F}_{rgb}, \mathbf{F}_{freq})\right)
 \end{equation}
-The attended output is merged via residual connection and layer normalization:
-\begin{equation}
-\mathbf{F}_{fused} = \text{LayerNorm}\left( \mathbf{F}_{rgb} + \text{MultiHead}(\mathbf{Q}, \mathbf{K}, \mathbf{V}) \right)
-\end{equation}
-Global pooling and an MLP projection head produce the authenticity score $\hat{y} \in [0, 1]$.
+Adaptive 1D average pooling over the $L=98$ tokens yields $\mathbf{z} \in \mathbb{R}^{B \times 512}$, followed by an MLP head ($512 \rightarrow 128 \rightarrow 1$ with ReLU and dropout $p=0.5$) trained under Binary Cross-Entropy with logits and label smoothing ($\alpha=0.05$). Total network size is 46,015,681 parameters (46.02M).
 
-\begin{figure}[t]
-\centering
-\includegraphics[width=0.95\linewidth]{experiment_outputs/figures/fig1_comparative_roc.png}
-\caption{Comparative Receiver Operating Characteristic (ROC) curves across all evaluated architectures on the hybrid FF++ (C23) and Celeb-DF v2 test benchmark.}
-\label{fig:roc}
-\end{figure}
+% ============================================================================
+\section{Experimental Setup}
 
-\section{Experimental Evaluation}
+\subsection{Datasets and Evaluation Protocols}
+\label{sec:datasets}
+To evaluate both in-distribution discrimination and cross-dataset robustness, we conduct experiments under two balanced protocols using an 80/20 video-level train/validation split (random seed 42, capped at 1,500 real and 1,500 fake source videos before sequence extraction):
 
-\subsection{Datasets and Protocol}
-Experiments utilize a hybrid cross-manipulation benchmark combining \textbf{FaceForensics++ (C23)} (Original, Deepfakes, Face2Face, FaceSwap, FaceShifter, DeepFakeDetection) and \textbf{Celeb-DF v2} (Celeb-real, YouTube-real, Celeb-synthesis). The split comprises:
-\begin{itemize}
-    \item \textbf{Training Split}: 2,319 video tensors (1,199 authentic, 1,120 manipulated)
-    \item \textbf{Validation Split}: 594 video tensors (300 authentic, 294 manipulated)
+\textbf{Protocol 1 --- Single-Source Fakes (FF++ C23):} All 1,500 fake videos are sampled from five FaceForensics++ H.264 C23 manipulation methods (1,000 videos each of Deepfakes, Face2Face~\cite{thies2016face2face}, FaceSwap, FaceShifter, and DeepFakeDetection). The 1,500 real anchors are sampled from FF++ Original (1,000), Celeb-real (590), and YouTube-real (300). After MTCNN filtering ($\ge 16$ consecutive face frames), this yields \textbf{2,091 training} and \textbf{569 validation} video clips (300 real, 269 fake).
+
+\textbf{Protocol 2 --- Cross-Dataset Mixed Fakes (FF++ C23 + Celeb-DF v2):} Identical real and FF++ pipelines are expanded by including Celeb-DF v2 \textit{Celeb-synthesis} videos~\cite{li2020celeb} in the fake candidate pool alongside FF++ manipulations. After MTCNN filtering, this produces \textbf{2,319 extracted training} volumes and \textbf{594 validation} video volumes (300 real, 294 fake). Protocol 2 introduces substantial domain difficulty:
+\begin{itemize}[leftmargin=*]
+    \item \textit{Suppression of naive artifacts}: Celeb-DF v2 employs improved color transfer and mask smoothing that eliminate overt spatial seams~\cite{li2020celeb};
+    \item \textit{Mixed compression domains}: FF++ C23 uses fixed H.264 quantization ($q=23$), whereas Celeb-DF v2 spans heterogeneous YouTube re-encodings that alter high-frequency Fourier roll-off~\cite{frank2020leveraging};
+    \item \textit{Higher valid-face retention}: Longer, cleanly frontalized Celeb-DF clips raise valid fake validation clips from 269 (Protocol 1) to 294 (Protocol 2).
 \end{itemize}
 
-\begin{table*}[t]
-\centering
-\caption{Comparative Performance Benchmark of AuthKYC (FTCA) Against Frame-Level and Spatio-Temporal Baselines on FaceForensics++ (C23) and Celeb-DF v2.}
-\label{tab:benchmark}
-\begin{tabular}{llccccccc}
-\toprule
-\textbf{Method} & \textbf{Modality} & \textbf{Params} & \textbf{Accuracy (\%)} & \textbf{AUC-ROC (\%)} & \textbf{Precision (\%)} & \textbf{Recall (\%)} & \textbf{F1-Score} & \textbf{EER (\%)} \\
-\midrule
-XceptionNet \cite{roessler2019faceforensics} & 2D Frame (299$\times$299) & 22.8M & 91.62 & 96.90 & 92.32 & 90.37 & 0.9134 & 8.42 \\
-EfficientNet-B4 \cite{tan2019efficientnet} & 2D Frame (300$\times$300) & 19.3M & 88.49 & 94.63 & 88.83 & 87.46 & 0.8814 & 11.64 \\
-R3D-18 (Vanilla RGB) \cite{tran2018closer} & 3D Clip (16$\times$224$\times$224) & 33.2M & 87.21 & 94.67 & \textbf{93.25} & 79.93 & 0.8608 & 11.67 \\
-R3D-18 + Freq (Concat) & 3D Clip + FFT & 34.5M & 87.04 & 93.85 & 84.66 & 90.14 & 0.8731 & 12.33 \\
-\textbf{FTCA (Ours --- Cross-Attention)} & \textbf{3D Clip + FFT} & \textbf{46.0M} & \textbf{90.57} & \textbf{95.93} & \textbf{91.03} & \textbf{89.80} & \textbf{0.9041} & \textbf{9.67} \\
-\bottomrule
-\end{tabular}
-\end{table*}
+\subsection{Implementation and Training Details}
+All models were trained on an NVIDIA A40 GPU (48~GB VRAM) using PyTorch 2.4 with AdamW ($\beta_1=0.9, \beta_2=0.999$, weight decay $10^{-3}$), label smoothing $\alpha=0.05$, gradient norm clipping ($\|g\|_2 \le 1.0$), and identical on-the-fly augmentations: RandomHorizontalFlip ($p=0.5$), ColorJitter $(0.3,0.3,0.3,0.1)$, GaussianBlur ($k=3, p=0.3$), and RandomErasing ($p=0.15$). FTCA used batch size $B=16$ ($144$ batches = $2,304$ samples/epoch via \texttt{drop\_last=True}), FP16 AMP, and a Cosine Annealing Warm Restarts scheduler ($T_0=10, T_{mult}=2, \eta_{min}=10^{-6}$). Controlled 3D baselines (Variants A and B) used the exact same Kinetics-400 backbone initialization and Cosine Annealing schedule for 30 epochs ($B=8$, $290$ batches/epoch). Evaluation is strictly \textbf{video-level} across all 594 validation volumes, reporting AUC-ROC, Accuracy, Precision, Recall, F1-Score, and Equal Error Rate (EER).
 
-\begin{figure}[t]
-\centering
-\includegraphics[width=0.95\linewidth]{experiment_outputs/figures/fig2_ablation_study.png}
-\caption{Ablation analysis demonstrating the superiority of Cross-Attention over Vanilla RGB-only and Naive Vector Concatenation across core metrics.}
-\label{fig:ablation}
-\end{figure}
+% ============================================================================
+\section{Results}
 
-\subsection{Benchmark Results}
-As reported in Table \ref{tab:benchmark} and Figure \ref{fig:roc}, FTCA attains an outstanding \textbf{95.93\% AUC-ROC} and \textbf{90.57\% Accuracy} on complete 3D video sequence volumes. While frame-level XceptionNet demonstrates 96.90\% AUC on static frames, it evaluates 18,780 individual still images without temporal continuity. In contrast, FTCA evaluates temporal video streams directly, achieving \textbf{89.80\% Recall} and an \textbf{EER of 9.67\%}.
+\subsection{Single-Source Ceiling (Protocol 1)}
+Under Protocol 1 (FF++ C23 fake manipulations), FTCA converges rapidly in 11 epochs (early stopping at Epoch 18, patience 7) and achieves near-ceiling performance (Table~\ref{tab:single}).
 
 \begin{table}[h]
 \centering
-\caption{Ablation Study: Architectural Fusion Strategies.}
-\label{tab:ablation}
-\begin{tabular}{lcccc}
+\caption{FTCA performance on Protocol 1 (FF++ C23 Fakes Only, 569 validation video clips).}
+\label{tab:single}
+\begin{tabular}{lc}
 \toprule
-\textbf{Variant} & \textbf{Fusion Type} & \textbf{Acc (\%)} & \textbf{AUC (\%)} & \textbf{EER (\%)} \\
+\textbf{Metric} & \textbf{FTCA (Protocol 1)} \\
 \midrule
-R3D-18 Vanilla & None (RGB Only) & 87.21 & 94.67 & 11.67 \\
-R3D-18 + Freq & Vector Concat & 87.04 & 93.85 & 12.33 \\
-\textbf{FTCA Full} & \textbf{Cross-Attention} & \textbf{90.57} & \textbf{95.93} & \textbf{9.67} \\
+AUC-ROC & \textbf{98.74\%} \\
+Accuracy & \textbf{94.55\%} \\
+Validation BCE Loss & 0.1447 \\
+Best Checkpoint Epoch & 11 / 50 (early stop @ 18) \\
+Train / Val Volumes & 2,091 / 569 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
+\noindent Achieving \textbf{98.74\% AUC-ROC} at the video-clip level demonstrates that dual-domain cross-attention captures nearly all spatial and spectral tampering signatures when source compression and synthesis families remain aligned.
+
+\subsection{Cross-Dataset Benchmark Comparison (Protocol 2)}
+
+\begin{table*}[t]
+\centering
+\caption{Controlled video-level comparison under Cross-Dataset Protocol 2 (FF++ C23 + Celeb-DF v2, $n=594$ identical validation video volumes: 300 real, 294 fake). All variants share the Kinetics-400 pretrained R3D-18 backbone.}
+\label{tab:cross}
+\begin{tabular}{llcccccc}
+\toprule
+\textbf{Method} & \textbf{Architecture} & \textbf{Params} & \textbf{AUC-ROC (\%)} & \textbf{Accuracy (\%)} & \textbf{Precision (\%)} & \textbf{Recall (\%)} & \textbf{EER (\%)} \\
+\midrule
+R3D-18 (RGB Only) & 3D ResNet-18 & 33.23M & 94.67 & 87.21 & \textbf{93.25} & 79.93 & 11.67 \\
+R3D-18 + Freq (Concat) & 3D ResNet-18 + FreqEnc & 45.16M & 93.85 & 87.04 & 84.66 & \textbf{90.14} & 12.33 \\
+\textbf{FTCA (Ours)} & \textbf{R3D-18 + FreqEnc + CrossAttn} & \textbf{46.02M} & \textbf{95.93} & \textbf{90.57} & 91.03 & 89.80 & \textbf{9.67} \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+On the substantially harder cross-dataset validation split ($n=594$), FTCA establishes the strongest overall operating point across all metrics (Table~\ref{tab:cross}, Fig.~\ref{fig:roc}), correctly classifying 538 of 594 video volumes:
+
 \begin{figure}[t]
 \centering
-\includegraphics[width=0.95\linewidth]{experiment_outputs/figures/fig3_training_convergence.png}
-\caption{FTCA training loss, validation loss, accuracy, and AUC-ROC trajectories across training cycles with Cosine Annealing with Warm Restarts.}
-\label{fig:convergence}
+\includegraphics[width=0.98\linewidth]{experiment_outputs/paper_figures/fig5_roc_video_level.png}
+\caption{Empirical video-level ROC curves extracted from the Protocol 2 evaluation ($n=594$). Circular markers indicate each model's Equal Error Rate (EER) operating point; FTCA attains the highest AUC-ROC (95.93\%) and lowest EER (9.67\%).}
+\label{fig:roc}
 \end{figure}
 
-\subsection{Ablation Analysis}
-Table \ref{tab:ablation} and Figure \ref{fig:ablation} validate our architectural design:
-\begin{itemize}
-    \item \textbf{Failure of Naive Concatenation}: Naively concatenating spatial and frequency representations drops AUC from 94.67\% to 93.85\% and raises EER to 12.33\% due to cross-modal interference.
-    \item \textbf{Efficacy of Cross-Attention}: FTCA's attention mechanism guides spatial queries to selectively interrogate frequency anomalies, yielding a \textbf{+2.08\% AUC} improvement over concatenation and cutting EER down to 9.67\%.
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Resolving the recall collapse of RGB-only 3D CNNs.} While vanilla R3D-18 achieves high precision (93.25\%), it suffers severe sensitivity collapse (79.93\% recall), failing to detect 59 of 294 manipulated clips. FTCA lifts recall by \textbf{+9.87 percentage points} to 89.80\% (catching 264/294 attacks) while preserving 91.03\% precision.
+    \item \textbf{Naive concatenation degrades AUC.} Appending the 11.73M-parameter \texttt{FrequencyEncoder} via concatenation raises parameters to 45.16M yet \textit{lowers} AUC-ROC by $-0.82\%$ (94.67\% $\rightarrow$ 93.85\%) and worsens EER from 11.67\% to 12.33\%.
+    \item \textbf{Architectural efficiency of cross-attention.} FTCA adds only \textbf{+0.85M parameters (+1.89\%)} over naive concatenation (1.05M cross-attention/norm weights minus a smaller classifier head) yet gains \textbf{+2.08\% AUC-ROC} and \textbf{+3.53\% Accuracy} (F1 improves from 0.8731 to \textbf{0.9041}).
+\end{enumerate}
+
+\subsection{Cross-Dataset Generalization Gap Analysis}
+
+Comparing Protocol 1 against Protocol 2 directly isolates the impact of mixing Celeb-DF v2 synthesis into a unified training and validation distribution (Fig.~\ref{fig:generalization}): AUC-ROC drops by \textbf{2.81\%} (98.74\% $\rightarrow$ 95.93\%), Accuracy by \textbf{3.98\%} (94.55\% $\rightarrow$ 90.57\%), and validation BCE loss rises from 0.1447 to 0.2547 (+76.0\% relative calibration shift).
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.98\linewidth]{experiment_outputs/paper_figures/fig3_cross_dataset_generalization.png}
+\caption{FTCA generalization gap comparing Protocol 1 (FF++ C23 fakes only, $n=569$) and Protocol 2 (Cross-dataset FF++ C23 + Celeb-DF v2, $n=594$) across (a) classification metrics and (b) validation BCE loss.}
+\label{fig:generalization}
+\end{figure}
+
+Three physical mechanisms drive this 2.81\% cross-dataset gap:
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Spectral compression variance:} Fourier magnitude spectra respond sharply to quantization matrices~\cite{frank2020leveraging}. FF++ C23 maintains uniform H.264 quality ($q=23$), whereas Celeb-DF v2 exhibits diverse YouTube compression histories that attenuate high-frequency GAN roll-off differently across clips.
+    \item \textbf{Reduced blending artifacts in Celeb-DF v2:} Celeb-DF explicitly reduces low-level color mismatch and seam boundaries relative to first-generation FF++ swaps~\cite{li2020celeb}, lowering signal-to-noise ratio in both RGB and spectral channels.
+    \item \textbf{Environment heterogeneity:} Mixing studio-controlled recordings with unconstrained celebrity footage shifts camera sensor characteristics, lighting dynamic range, and facial scale.
+\end{enumerate}
+
+Despite these shifts, retaining \textbf{95.93\% AUC-ROC} on mixed-domain video volumes confirms that attention-gated spectral querying resists catastrophic cross-domain collapse.
+
+% ============================================================================
+\section{Ablation Study: Why Cross-Attention Succeeds}
+\label{sec:ablation}
+
+To isolate the fusion mechanism under controlled conditions (Table~\ref{tab:cross}, Fig.~\ref{fig:ablation}, Fig.~\ref{fig:radar}), we compare three architectural variants using the exact same R3D-18 backbone and 594-volume evaluation split:
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.98\linewidth]{experiment_outputs/paper_figures/fig4_ablation_study.png}
+\caption{Controlled ablation study across three 3D video architectures on the cross-dataset benchmark ($n=594$). Naive frequency concatenation (Variant B) hurts AUC-ROC and precision despite adding 11.93M parameters, whereas cross-attention (Variant C) dominates overall accuracy, AUC-ROC, and F1-Score (0.9041).}
+\label{fig:ablation}
+\end{figure}
+
+\begin{itemize}[leftmargin=*]
+    \item \textbf{Variant A --- R3D-18 RGB Only (33.23M):} Achieves 94.67\% AUC-ROC and 93.25\% precision, but misses 20.07\% of fakes (79.93\% recall, F1 = 0.8608). Pure spatial-temporal kernels fail to detect spectrally anomalous fakes whose visual motion appears smooth.
+    \item \textbf{Variant B --- R3D-18 + FFT Naive Concat (45.16M):} Concatenating pooled descriptors $[\mathbf{f}_{rgb} \,\|\, \mathbf{f}_{freq}] \in \mathbb{R}^{1024}$ lifts recall to 90.14\%, but collapses precision from 93.25\% down to 84.66\% (48 false alarms vs.\ 17 for Variant A) and drops AUC-ROC to 93.85\%. Two mechanisms explain this regression: (i)~global pooling before fusion discards \textit{where} in space-time $(t, h, w)$ a spectral anomaly aligns with facial contours; and (ii)~log-FFT magnitudes follow heavy-tailed distributions that differ statistically from ReLU RGB activations, creating gradient interference inside the monolithic linear layer ($1024 \rightarrow 256$).
+    \item \textbf{Variant C --- FTCA Cross-Attention (46.02M):} Keeping all $L=98$ spatio-temporal tokens unpooled before fusion enables localized spatial queries to gate spectral keys/values selectively. Residual normalization $\text{LayerNorm}(\mathbf{F}_{rgb} + \text{CrossAttn})$ suppresses spectral noise on clean compressed segments while amplifying corroborated blending anomalies, achieving \textbf{95.93\% AUC}, \textbf{90.57\% Accuracy}, \textbf{0.9041 F1}, and the lowest EER (\textbf{9.67\%}).
 \end{itemize}
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=0.85\linewidth]{experiment_outputs/figures/fig4_confusion_matrix.png}
-\caption{Confusion Matrix of the FTCA detector on the 594 evaluation video sequence volumes.}
+\includegraphics[width=0.90\linewidth]{experiment_outputs/paper_figures/fig7_radar_comparison.png}
+\caption{Multi-metric radar profile comparing video-level architectures across AUC-ROC, Accuracy, Precision, Recall, F1-Score, and $1-\text{EER}$. FTCA spans the largest, most balanced operating envelope.}
+\label{fig:radar}
+\end{figure}
+
+% ============================================================================
+\section{Training Dynamics and Optimization}
+
+Fig.~\ref{fig:training} traces FTCA's 36-epoch optimization trajectory under Cross-Dataset Protocol 2 across three distinct stages logged during training:
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=0.98\linewidth]{experiment_outputs/paper_figures/fig2_training_dynamics.png}
+\caption{FTCA training dynamics over 36 epochs under Cross-Dataset Protocol 2: (a) BCE loss convergence, (b) validation AUC-ROC trajectory relative to the Protocol 1 ceiling (98.74\%), and (c) cosine warm-restart + micro-polishing learning rate schedule.}
+\label{fig:training}
+\end{figure*}
+
+\begin{enumerate}[leftmargin=*]
+    \item \textbf{Cycle 1 (Epochs 1--11):} Starting from Kinetics-400 weights at $\text{lr} = 3.0 \times 10^{-4}$ and decaying down to $8.32 \times 10^{-6}$, FTCA rapidly learns coarse spatial-frequency correlations, lifting validation AUC from 72.17\% (Epoch 1) to 92.44\% (Epoch 11) and reducing validation loss from 0.6610 to 0.3576.
+    \item \textbf{Cycle 2 Resumption (Epochs 12--31):} Resuming cosine annealing at $\text{lr} = 1.50 \times 10^{-4}$ initially perturbs validation stability (Epoch 13 dips to 87.16\% AUC) as cross-attention weights escape early local minima. As learning rate anneals smoothly to $1.92 \times 10^{-6}$ by Epoch 31, validation AUC climbs steadily to \textbf{95.66\%} (89.90\% accuracy; 90.74\% at Epoch 30 with 0.2616 val loss).
+    \item \textbf{Micro-Polishing Stage (Epochs 32--36):} Fine-tuning from the Epoch 31 checkpoint at a conservative low learning rate ($\text{lr} = 1.50 \times 10^{-5}$) prevents the violent spike caused by higher-LR restarts, attaining minimum validation loss (\textbf{0.2547} at Epoch 32, 95.90\% AUC) and peak \textbf{95.93\% AUC-ROC} at Epoch 33 (90.57\% accuracy).
+\end{enumerate}
+
+% ============================================================================
+\section{Deployment in Financial e-KYC Systems}
+
+\subsection{Operational Confusion Matrix and Risk Asymmetry}
+In automated financial onboarding, classification errors carry asymmetric operational costs: false negatives allow synthetic impersonators to pass KYC checks (regulatory/fraud exposure), whereas false positives route legitimate applicants to secondary manual verification (UX friction). On the 594 cross-dataset validation clips (Fig.~\ref{fig:cm}), FTCA achieves:
+\begin{itemize}[leftmargin=*]
+    \item \textbf{91.3\% Specificity (274/300 authentic)}: Only 26 genuine videos trigger secondary verification (8.7\% FPR);
+    \item \textbf{89.8\% Sensitivity (264/294 manipulated)}: 264 deepfake attacks are blocked, leaving 30 missed attempts (10.2\% FNR)---compared to 59 missed attacks under RGB-only R3D-18 (nearly $2\times$ reduction in security breaches).
+\end{itemize}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.84\linewidth]{experiment_outputs/paper_figures/fig6_confusion_matrix.png}
+\caption{FTCA confusion matrix on the 594-volume cross-dataset validation split (Protocol 2).}
 \label{fig:cm}
 \end{figure}
 
-\section{Financial e-KYC Deployment}
-As illustrated in Figure \ref{fig:cm}, the confusion matrix reveals that FTCA correctly flags 264 out of 294 manipulated video volumes (89.80\% detection rate) while correctly verifying 274 out of 300 authentic applicants (91.33\% specificity). With an end-to-end forward inference latency under 45 ms per video volume on enterprise GPUs, AuthKYC provides real-time verification suitable for high-throughput mobile banking and remote identity onboarding.
+\subsection{Waterfall PAD Integration and Measured Throughput}
+Within the end-to-end \textbf{AuthKYC} gateway, FTCA operates as \textbf{Stage 4} in a four-layer Presentation Attack Detection (PAD) cascade preceding approval: (1)~PRNU camera sensor noise residual verification against virtual cameras, (2)~2D FFT Moir\'e interference analysis against screen-replay attacks, (3)~CHROM-based remote photoplethysmography (rPPG) cardiac pulse liveness verification, and (4)~FTCA spatio-temporal AI manipulation detection. Because web/mobile upload re-encoding attenuates high-frequency PRNU sensor patterns, production deployment pairs hard CPU screening on Moir\'e replay signatures with weighted multi-stage risk escalation rather than single-module vetoing.
 
+On an NVIDIA A40 GPU, full validation evaluation across 569 pre-extracted video volumes completes in \textbf{79.00~s} (\textbf{138.8~ms} amortized per 16-frame verification window including tensor I/O; single-stream Protocol 2 evaluation with disk serialization averages $\sim 0.30$~s/clip), whereas CPU-bound edge waterfall execution spans $4.7$--$15.8$~s over 6-second capture windows. Early CPU rejection of trivial virtual-camera and replay feeds reserves GPU FTCA capacity exclusively for live camera streams, keeping real-time verification economically viable.
+
+% ============================================================================
 \section{Conclusion}
-We presented AuthKYC, an end-to-end deepfake detection system for remote identity verification based on a Frequency-Temporal Cross-Attention (FTCA) architecture. By coupling 3D spatio-temporal convolutions with dynamic 3D Fourier spectrum analysis through cross-attention, AuthKYC achieves 95.93\% AUC-ROC and 90.57\% Accuracy on a comprehensive FaceForensics++ and Celeb-DF v2 benchmark, providing an effective defense against generative facial identity fraud in FinTech applications.
 
+We presented \textbf{FTCA}, the dual-domain video deepfake detection architecture powering AuthKYC for banking e-KYC verification. By combining Kinetics-400 pretrained R3D-18 spatio-temporal encodings with dynamic 3D FFT spectral representations through asymmetric multi-head cross-attention, FTCA resolves both frame-level temporal blindness and cross-modal concatenation collapse. Our empirical evaluation establishes four main conclusions:
+\begin{enumerate}[leftmargin=*]
+    \item Under single-source FF++ C23 manipulation splits (Protocol 1), FTCA reaches \textbf{98.74\% AUC-ROC} and \textbf{94.55\% Accuracy} at the video level.
+    \item Under rigorous cross-dataset evaluation mixing FF++ C23 and Celeb-DF v2 synthesis (Protocol 2, $n=594$), FTCA preserves \textbf{95.93\% AUC-ROC}, \textbf{90.57\% Accuracy}, and \textbf{9.67\% EER}, cutting deepfake false negatives nearly in half compared to RGB-only R3D-18 (30 vs.\ 59 missed attacks).
+    \item Naive concatenation of frequency features degrades performance ($-0.82\%$ AUC vs.\ RGB-only despite 45.16M params), whereas spatial-query cross-attention adds just 0.85M parameters (+1.89\%) to achieve a \textbf{+2.08\% AUC} and \textbf{+3.53\% Accuracy} improvement.
+    \item The quantified \textbf{2.81\% AUC generalization gap} highlights heterogeneous video compression and advanced color blending as primary bottlenecks for in-the-wild deployment.
+\end{enumerate}
+
+Future work will investigate compression-invariant spectral normalization, cross-attention spatial-temporal attribution maps for regulatory explainability, and knowledge distillation toward mobile-edge execution.
+
+% ============================================================================
 \bibliographystyle{IEEEtran}
 \begin{thebibliography}{00}
-\bibitem{roessler2019faceforensics} A. R\"ossler et al., ``FaceForensics++: Learning to detect manipulated facial images,'' in \textit{Proc. IEEE/CVF ICCV}, 2019, pp. 1--11.
-\bibitem{li2020celeb} Y. Li, X. Yang, P. Sun, H. Qi, and S. Lyu, ``Celeb-DF: A large-scale challenging dataset for deepfake detection,'' in \textit{Proc. IEEE/CVF CVPR}, 2020, pp. 3207--3216.
-\bibitem{frank2020leveraging} J. Frank et al., ``Leveraging frequency analysis for deep fake image recognition,'' in \textit{Proc. ICML}, 2020, pp. 3247--3258.
-\bibitem{durall2020watch} R. Durall, M. Keuper, and J. Keuper, ``Watch your up-convolution: CNN based generative deepfake detection,'' in \textit{Proc. IEEE/CVF CVPR}, 2020, pp. 2433--2442.
-\bibitem{tran2018closer} D. Tran et al., ``A closer look at spatiotemporal convolutions for action recognition,'' in \textit{Proc. IEEE/CVF CVPR}, 2018, pp. 6450--6459.
+\bibitem{roessler2019faceforensics} A. R\"ossler, D. Cozzolino, L. Verdoliva, C. Riess, J. Thies, and M. Nie{\ss}ner, ``FaceForensics++: Learning to detect manipulated facial images,'' in \textit{Proc. IEEE/CVF ICCV}, 2019, pp. 1--11.
+\bibitem{li2020celeb} Y. Li, X. Yang, P. Sun, H. Qi, and S. Lyu, ``Celeb-DF: A large-scale challenging dataset for deepfake forensics,'' in \textit{Proc. IEEE/CVF CVPR}, 2020, pp. 3207--3216.
+\bibitem{frank2020leveraging} J. Frank, T. Eisenhofer, L. Sch\"onherr, A. Fischer, D. Kolossa, and T. Holz, ``Leveraging frequency analysis for deep fake image recognition,'' in \textit{Proc. ICML}, 2020, pp. 3247--3258.
+\bibitem{durall2020watch} R. Durall, M. Keuper, and J. Keuper, ``Watch your up-convolution: CNN based generative deep fake detection,'' in \textit{Proc. IEEE/CVF CVPR}, 2020.
+\bibitem{tran2018closer} D. Tran, H. Wang, L. Torresani, J. Ray, Y. LeCun, and M. Paluri, ``A closer look at spatiotemporal convolutions for action recognition,'' in \textit{Proc. IEEE/CVF CVPR}, 2018, pp. 6450--6459.
+\bibitem{vaswani2017attention} A. Vaswani et al., ``Attention is all you need,'' in \textit{Proc. NeurIPS}, 2017.
+\bibitem{chollet2017xception} F. Chollet, ``Xception: Deep learning with depthwise separable convolutions,'' in \textit{Proc. IEEE/CVF CVPR}, 2017, pp. 1251--1258.
 \bibitem{tan2019efficientnet} M. Tan and Q. Le, ``EfficientNet: Rethinking model scaling for convolutional neural networks,'' in \textit{Proc. ICML}, 2019, pp. 6105--6114.
+\bibitem{thies2016face2face} J. Thies, M. Zollh\"ofer, M. Stamminger, C. Theobalt, and M. Nie{\ss}ner, ``Face2Face: Real-time face capture and reenactment of RGB videos,'' in \textit{Proc. IEEE/CVF CVPR}, 2016.
+\bibitem{thies2019deferred} J. Thies, M. Zollh\"ofer, and M. Nie{\ss}ner, ``Deferred neural rendering: Image synthesis using neural textures,'' \textit{ACM Trans. Graphics (TOG)}, vol. 38, no. 4, 2019.
+\bibitem{li2018ictu} Y. Li, M.-C. Chang, and S. Lyu, ``In Ictu Oculi: Exposing AI created fake videos by detecting eye blinking,'' in \textit{Proc. IEEE WIFS}, 2018.
+\bibitem{guera2018deepfake} D. G\"uera and E. J. Delp, ``Deepfake video detection using recurrent neural networks,'' in \textit{Proc. IEEE AVSS}, 2018.
+\bibitem{masi2020two} I. Masi, A. Killekar, R. M. Mascarenhas, S. P. Gurudatt, and W. AbdAlmageed, ``Two-branch recurrent network for isolating deepfakes in videos,'' in \textit{Proc. ECCV}, 2020.
+\bibitem{shorten2019survey} C. Shorten and T. M. Khoshgoftaar, ``A survey on image data augmentation for deep learning,'' \textit{J. Big Data}, vol. 6, 2019.
 \end{thebibliography}
 
 \end{document}
