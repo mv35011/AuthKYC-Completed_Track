@@ -1,9 +1,8 @@
 # AuthKYC: Frequency-Temporal Cross-Attention for Robust Video-Level Deepfake Detection in Remote Identity Verification
 
-**Manmohan Vishwakarma**  
+**Manmohan Vishwakarma, Ankur Raj**  
 Department of Electronics and Communication Engineering  
-National Institute of Technology Patna, Bihar, India  
-`manmohanv.ug23.ec@nitp.ac.in`
+National Institute of Technology Patna, Patna, Bihar, India
 
 ---
 
